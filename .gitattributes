@@ -1,0 +1,15 @@
+# Normalize line endings: the repository stores LF, checkouts may use CRLF.
+* text=auto eol=lf
+
+# Binary assets must never be converted.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.vsix binary
+*.woff binary
+*.woff2 binary
+
+# Generated bundles and lock files: no diff noise, no merge churn.
+dist/** linguist-generated=true
+package-lock.json -diff linguist-generated=true

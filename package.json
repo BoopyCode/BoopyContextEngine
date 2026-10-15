@@ -1,0 +1,481 @@
+{
+  "name": "boopy-context-engine",
+  "displayName": "Boopy Context Engine (BCE)",
+  "description": "Local project indexing, project map and token-efficient context tools for GitHub Copilot Agent mode. Works fully offline, no paid AI API required.",
+  "version": "0.1.3",
+  "publisher": "BoopyCode",
+  "author": {
+    "name": "BoopyCode"
+  },
+  "license": "MIT",
+  "homepage": "https://boopycode.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BoopyCode/BoopyContextEngine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BoopyCode/BoopyContextEngine/issues"
+  },
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "copilot",
+    "agent",
+    "context",
+    "index",
+    "tokens",
+    "project map"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "BCE analyzes project files read-only. Automatic .gitignore updates and in-workspace index storage are disabled in untrusted workspaces."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "BCE indexes files on disk and requires a file system extension host."
+    }
+  },
+  "contributes": {
+    "languageModelTools": [
+      {
+        "name": "bce_get_project_overview",
+        "displayName": "BCE: Project Overview",
+        "userDescription": "Get a compact map of the project: modules, frameworks, entry points and database objects.",
+        "toolReferenceName": "bceProjectOverview",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(map)",
+        "tags": [
+          "bce",
+          "context",
+          "project"
+        ],
+        "modelDescription": "CRITICAL - CALL THIS TOOL FIRST when the user asks about project structure, architecture, modules, frameworks, entry points, API routes, database objects or test layout, and before any change that may touch more than one module. Do not guess the layout and do not open with a repository-wide grep: this single cheap call returns the whole map. It returns metadata only - detected languages and frameworks (with the evidence for each detection), entry points, main modules with their top symbols, database objects and API routes with file:line, test files, project instruction files, plus index version and freshness. It never returns source code. Skip it only for a trivial edit inside a file the user has already named.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "focus": {
+              "type": "string",
+              "description": "Optional focus area used to filter the overview, for example 'database', 'api', 'tests', 'frontend', 'config' or a module/directory name."
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000,
+              "description": "Optional approximate token budget for the response. Defaults to the bce.tokenBudget setting."
+            }
+          }
+        }
+      },
+      {
+        "name": "bce_find_context",
+        "displayName": "BCE: Find Context",
+        "userDescription": "Find the most relevant files, symbols and code snippets for a task, within a token budget.",
+        "toolReferenceName": "bceFindContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "tags": [
+          "bce",
+          "context",
+          "search"
+        ],
+        "modelDescription": "PRIMARY CONTEXT SOURCE - ALWAYS use this tool to locate code, symbols, endpoints, tables or tests instead of repeatedly grepping the repository or reading whole files, and before concluding that something does not exist. Prefer it over attaching or pasting entire files: Copilot's own implicit file attachment is redundant once you call this, and every extra attached file costs tokens. It runs the local Boopy Context Engine retriever and returns a ranked, de-duplicated, token-bounded bundle: matching files and symbols, why each hit is relevant, exact path:line references, one minimal snippet per hit, an estimated token count and the index freshness. Narrow with 'scope' when you know the area; if the answer seems incomplete, call it again with a sharper 'query' rather than raising maxTokens blindly. Do NOT use it for a file you already know - use bce_get_file_context - and do not treat ranked hits as proof: open the listed ranges before editing.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What you are looking for, for example 'user authentication middleware', 'orders table migration', 'OrderService::refund' or 'checkout endpoint'."
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional workspace-relative directory or path prefix that limits the search, for example 'src/api'."
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000,
+              "description": "Optional approximate token budget for the response. Defaults to the bce.tokenBudget setting."
+            },
+            "includeTests": {
+              "type": "boolean",
+              "description": "Include test files in the results. Defaults to true because tests are often the best documentation of intended behavior."
+            },
+            "includeSnippets": {
+              "type": "boolean",
+              "description": "Include short code snippets for the top hits. Defaults to true. Set to false when you only need paths and line numbers."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "bce_get_file_context",
+        "displayName": "BCE: File Context",
+        "userDescription": "Read a precise symbol or line range from a file instead of the whole file.",
+        "toolReferenceName": "bceFileContext",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file-code)",
+        "tags": [
+          "bce",
+          "context",
+          "file"
+        ],
+        "modelDescription": "ALWAYS use this instead of reading a whole file when you know the file and need one symbol or one small range: it returns exactly that slice plus the symbol signature, imports, dependents and bound tests, which keeps the prompt small and precise. It reads the OPEN EDITOR BUFFER when the file has unsaved changes, so it never returns stale code; in that case the response starts with 'UNSAVED editor buffer' and all line numbers refer to the buffer, not to the file on disk. Secret files, excluded paths and paths outside the workspace are refused with an explanation. Do NOT use it to explore unknown parts of the project (use bce_find_context) and do not request a whole large file: ask for one symbol or an explicit startLine/endLine range.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path or workspace-relative path of the file to read."
+            },
+            "symbol": {
+              "type": "string",
+              "description": "Name of the symbol to extract, for example 'OrderService' or 'refund'. When omitted, startLine/endLine or the head of the file is returned."
+            },
+            "startLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First line of the range to return (1-based)."
+            },
+            "endLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Last line of the range to return (1-based, inclusive)."
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000,
+              "description": "Optional approximate token budget for the response. Defaults to the bce.tokenBudget setting."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "bce_explain_impact",
+        "displayName": "BCE: Explain Impact",
+        "userDescription": "Find likely dependents of a symbol or file before changing it.",
+        "toolReferenceName": "bceImpact",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(references)",
+        "tags": [
+          "bce",
+          "context",
+          "impact"
+        ],
+        "modelDescription": "MANDATORY before renaming, moving, deleting or changing the signature of shared code, and whenever the user asks what uses something, whether it is safe to delete, or what would break. Reports what the local index knows to be affected in two clearly separated groups: verified parser references (safe to trust) and heuristic estimates (text matches, unresolved imports, dynamic usage - these MUST be verified in the files). It also lists related tests and database objects. Never present the heuristic group as a complete impact set, and do not use this tool for code that does not exist in the index yet (new code has no dependents).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative or absolute file path whose dependents should be analyzed."
+            },
+            "symbol": {
+              "type": "string",
+              "description": "Symbol name (class, function, method, table, route) whose dependents should be analyzed. Can be used together with 'path' to scope the symbol lookup."
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000,
+              "description": "Optional approximate token budget for the response. Defaults to the bce.tokenBudget setting."
+            }
+          }
+        }
+      },
+      {
+        "name": "bce_get_related_tests",
+        "displayName": "BCE: Related Tests",
+        "userDescription": "Find existing tests and test configuration related to a file or symbol.",
+        "toolReferenceName": "bceRelatedTests",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(beaker)",
+        "tags": [
+          "bce",
+          "context",
+          "tests"
+        ],
+        "modelDescription": "ALWAYS use this before writing new tests (so the new file follows the existing conventions and is placed correctly), after changing behavior (to know which tests to run) and when the user asks which tests cover something. Returns test files related by naming convention, directory layout, import graph and symbol usage, each with a confidence level and the reason it matched, plus the detected runner configuration files (vitest, jest, phpunit, pytest, playwright, ...). Do NOT treat the returned list as proof of coverage and do not use it instead of running the tests.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Source file whose tests should be found (absolute or workspace-relative)."
+            },
+            "symbol": {
+              "type": "string",
+              "description": "Symbol name whose tests should be found. Use instead of or together with 'path'."
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 20000,
+              "description": "Optional approximate token budget for the response. Defaults to the bce.tokenBudget setting."
+            }
+          }
+        }
+      },
+      {
+        "name": "bce_get_status",
+        "displayName": "BCE: Index Status",
+        "userDescription": "Show BCE index status, freshness, cache and error information.",
+        "toolReferenceName": "bceStatus",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(pulse)",
+        "tags": [
+          "bce",
+          "context",
+          "diagnostics"
+        ],
+        "modelDescription": "Use this when results from another bce tool look outdated or incomplete, when the user asks whether the index is ready, or before relying on a context bundle for a large refactor. Returns index health only - indexed/ignored counts, last update time, fresh/stale/partial/paused, cache hit and miss counters, files with unsaved changes and recent errors - and no source code, so it is a cheap call. Do NOT use it for questions about the code itself.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "verbose": {
+              "type": "boolean",
+              "description": "Include per-language file counts, indexed directory breakdown and recent tool-call statistics. Defaults to false."
+            }
+          }
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "bce.analyzeProject",
+        "title": "BCE: Analyze Project",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.rebuildIndex",
+        "title": "BCE: Rebuild Index",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.showProjectMap",
+        "title": "BCE: Show Project Map",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.searchContext",
+        "title": "BCE: Search Context",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.showDiagnostics",
+        "title": "BCE: Show Diagnostics",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.clearCache",
+        "title": "BCE: Clear Cache",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.pauseIndexing",
+        "title": "BCE: Pause Background Indexing",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.resumeIndexing",
+        "title": "BCE: Resume Background Indexing",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.cancelIndexing",
+        "title": "BCE: Cancel Indexing",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.ensureGitIgnore",
+        "title": "BCE: Ensure BCE Output Is Git-Ignored",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.runBenchmark",
+        "title": "BCE: Run Local Benchmark",
+        "category": "BCE"
+      }
+    ],
+    "configuration": {
+      "title": "Boopy Context Engine",
+      "properties": {
+        "bce.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Boopy Context Engine indexing and tools."
+        },
+        "bce.autoIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Index the workspace automatically in the background and keep the index updated on file changes."
+        },
+        "bce.tokenBudget": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 200,
+          "maximum": 100000,
+          "scope": "resource",
+          "description": "Default approximate token budget for a single bce tool response. This is a per-response limit, not a limit for the whole Copilot conversation."
+        },
+        "bce.maxFileSizeKb": {
+          "type": "number",
+          "default": 512,
+          "minimum": 4,
+          "maximum": 10240,
+          "scope": "resource",
+          "description": "Files larger than this size are never indexed or returned by bce tools."
+        },
+        "bce.maxFiles": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 100,
+          "description": "Safety limit for the number of indexed files per workspace."
+        },
+        "bce.respectGitignore": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Honor .gitignore files (root and nested) when scanning the project."
+        },
+        "bce.includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "Workspace-relative glob patterns that override soft exclusions (for example 'vendor/my-lib/**'). Secret files, binary files and files above bce.maxFileSizeKb can never be included."
+        },
+        "bce.ignorePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "Additional workspace-relative glob patterns to ignore, applied on top of .gitignore, .bceignore and the built-in exclusions."
+        },
+        "bce.followSymlinks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Follow symbolic links while scanning. Links that resolve outside the workspace root are always refused for safety."
+        },
+        "bce.autoGitIgnore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically keep BCE output paths in the project's .gitignore. Requires a trusted workspace."
+        },
+        "bce.storage.location": {
+          "type": "string",
+          "enum": [
+            "extensionStorage",
+            "workspace"
+          ],
+          "default": "extensionStorage",
+          "description": "Where the BCE index, project map and context cache are stored. 'extensionStorage' keeps the project directory clean; 'workspace' writes to <project>/.bce (automatically git-ignored)."
+        },
+        "bce.diagnostics.level": {
+          "type": "string",
+          "enum": [
+            "off",
+            "normal",
+            "verbose"
+          ],
+          "default": "normal",
+          "description": "How much BCE writes to the 'Boopy Context Engine' output channel."
+        },
+        "bce.search.maxResults": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of ranked items returned by bce_find_context."
+        },
+        "bce.search.snippetLines": {
+          "type": "number",
+          "default": 12,
+          "minimum": 0,
+          "maximum": 200,
+          "description": "Maximum number of source lines included per hit when snippets are enabled."
+        },
+        "bce.git.recencyDays": {
+          "type": "number",
+          "default": 14,
+          "minimum": 0,
+          "maximum": 365,
+          "description": "Window used to boost recently modified files (from git when available)."
+        },
+        "bce.tools.projectOverview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_get_project_overview tool."
+        },
+        "bce.tools.findContext.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_find_context tool."
+        },
+        "bce.tools.fileContext.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_get_file_context tool."
+        },
+        "bce.tools.explainImpact.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_explain_impact tool."
+        },
+        "bce.tools.relatedTests.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_get_related_tests tool."
+        },
+        "bce.tools.status.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register the bce_get_status tool."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run test && npm run compile",
+    "vscode:prepublish": "node esbuild.js --production"
+  },
+  "dependencies": {
+    "ignore": "^5.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/vscode": "^1.99.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

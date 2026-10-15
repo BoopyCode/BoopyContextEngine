@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run BCE Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${input:testWorkspace}"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "npm: compile"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testWorkspace",
+      "type": "promptString",
+      "description": "Folder to open in the Extension Development Host (leave empty for the BCE repository itself)",
+      "default": "${workspaceFolder}"
+    }
+  ]
+}

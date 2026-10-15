@@ -1,0 +1,3 @@
+# Project specific BCE rules (on top of .gitignore).
+generated/
+*.generated.ts

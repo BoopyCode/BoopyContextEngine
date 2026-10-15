@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+src/**
+test/**
+scripts/**
+node_modules/**
+.bce-measure-*.json
+coverage/**
+**/*.ts
+**/*.map
+esbuild.js
+vitest.config.ts
+tsconfig.json
+.gitignore
+.gitattributes

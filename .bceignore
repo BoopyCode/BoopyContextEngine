@@ -1,0 +1,7 @@
+# Boopy Context Engine ignore file.
+# Syntax is the same as .gitignore. Paths are relative to this file.
+# .gitignore is honored automatically too (disable with the bce.respectGitignore setting).
+
+# Example: keep generated API clients out of the index.
+# generated/**
+# *.generated.ts

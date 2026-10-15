@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.vsix
+.vscode-test/
+.bce-measure-*.json
+.DS_Store
+
+# >>> Boopy Context Engine (BCE) - managed block, do not edit >>>
+.bce/
+.bce-cache/
+# <<< Boopy Context Engine (BCE) - managed block <<<
+
+# Local development notes: the project specification for the coding agent stays on the
+# machine that wrote the code, it is not published with the repository.
+copilot-instructions.md
+.agent-notes/

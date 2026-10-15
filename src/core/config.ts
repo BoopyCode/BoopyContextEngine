@@ -1,0 +1,80 @@
+import { sha1 } from './util/hash';
+
+/** Workspace scoped configuration, resolved from the `bce.*` settings. */
+export interface WorkspaceConfig {
+  enabled: boolean;
+  autoIndex: boolean;
+  tokenBudget: number;
+  maxFileSizeKb: number;
+  maxFiles: number;
+  respectGitignore: boolean;
+  includePaths: string[];
+  ignorePaths: string[];
+  followSymlinks: boolean;
+  autoGitIgnore: boolean;
+  storageLocation: 'extensionStorage' | 'workspace';
+  diagnosticsLevel: 'off' | 'normal' | 'verbose';
+  maxSearchResults: number;
+  snippetLines: number;
+  recencyDays: number;
+  tools: {
+    projectOverview: boolean;
+    findContext: boolean;
+    fileContext: boolean;
+    explainImpact: boolean;
+    relatedTests: boolean;
+    status: boolean;
+  };
+}
+
+export const defaultWorkspaceConfig: WorkspaceConfig = {
+  enabled: true,
+  autoIndex: true,
+  tokenBudget: 4000,
+  maxFileSizeKb: 512,
+  maxFiles: 20000,
+  respectGitignore: true,
+  includePaths: [],
+  ignorePaths: [],
+  followSymlinks: false,
+  autoGitIgnore: true,
+  storageLocation: 'extensionStorage',
+  diagnosticsLevel: 'normal',
+  maxSearchResults: 12,
+  snippetLines: 12,
+  recencyDays: 14,
+  tools: {
+    projectOverview: true,
+    findContext: true,
+    fileContext: true,
+    explainImpact: true,
+    relatedTests: true,
+    status: true
+  }
+};
+
+/**
+ * Signature of everything that changes what the index should contain. When it
+ * changes, the stored index is re-checked and, if needed, rebuilt from scratch.
+ */
+export function configSignature(config: WorkspaceConfig): string {
+  return sha1(
+    JSON.stringify({
+      respectGitignore: config.respectGitignore,
+      includePaths: [...config.includePaths].sort(),
+      ignorePaths: [...config.ignorePaths].sort(),
+      followSymlinks: config.followSymlinks,
+      maxFileSizeKb: config.maxFileSizeKb,
+      maxFiles: config.maxFiles
+    })
+  ).slice(0, 16);
+}
+
+export function maxFileSizeBytes(config: WorkspaceConfig): number {
+  return Math.max(4 * 1024, Math.round(config.maxFileSizeKb * 1024));
+}
+
+export function clampTokenBudget(requested: number | undefined, fallback: number): number {
+  const value = typeof requested === 'number' && Number.isFinite(requested) ? Math.round(requested) : fallback;
+  return Math.min(Math.max(value, 200), 20000);
+}
