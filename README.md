@@ -15,26 +15,35 @@ Project home: **[boopycode.com](https://boopycode.com)** — questions, bugs and
 
 ---
 
-## 1. Install (local, no marketplace needed)
+## 1. Install
+
+**A. Ready made build (no toolchain needed)**
+
+Download `bce-0.1.3.vsix` from the [latest release](https://github.com/BoopyCode/BoopyContextEngine/releases/latest)
+and install it:
+
+```powershell
+code --install-extension bce-0.1.3.vsix
+```
+
+Or in VS Code: Extensions view -> `...` -> **Install from VSIX...**
+
+**B. Development host (fastest for working on BCE itself)**
 
 ```powershell
 npm install
 npm run check        # typecheck + tests + bundle
 ```
 
-Then either:
-
-**A. Development host (fastest)**
-
 Open this folder in VS Code and press `F5` ("Run BCE Extension"). A second VS Code window
 opens with BCE loaded - open any project there.
 
-**B. Install into your normal VS Code**
+**C. Local VSIX from source**
 
 ```powershell
 npm run vscode:prepublish
-# copy the folder (or a vsix built with `npx @vscode/vsce package`) into
-# %USERPROFILE%\.vscode\extensions\boopycode.boopy-context-engine-0.1.0\
+npx @vscode/vsce package
+code --install-extension boopy-context-engine-0.1.3.vsix --force
 ```
 
 Restart VS Code, open a project, and check the status bar for `bce: Indexing` followed by
