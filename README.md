@@ -19,11 +19,11 @@ Project home: **[boopycode.com](https://boopycode.com)** — questions, bugs and
 
 **A. Ready made build (no toolchain needed)**
 
-Download `bce-0.1.5.vsix` from the [latest release](https://github.com/BoopyCode/BoopyContextEngine/releases/latest)
+Download `bce-0.1.6.vsix` from the [latest release](https://github.com/BoopyCode/BoopyContextEngine/releases/latest)
 and install it:
 
 ```powershell
-code --install-extension bce-0.1.5.vsix
+code --install-extension bce-0.1.6.vsix
 ```
 
 Or in VS Code: Extensions view -> `...` -> **Install from VSIX...**
@@ -43,7 +43,7 @@ opens with BCE loaded - open any project there.
 ```powershell
 npm run vscode:prepublish
 npx @vscode/vsce package
-code --install-extension boopy-context-engine-0.1.5.vsix --force
+code --install-extension boopy-context-engine-0.1.6.vsix --force
 ```
 
 Restart VS Code, open a project, and check the status bar for `bce: Indexing` followed by
@@ -310,7 +310,7 @@ compared in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 7.
 
 ---
 
-## 11. Status - what works and what does not (v0.1.5)
+## 11. Status - what works and what does not (v0.1.6)
 
 Implemented and covered by tests:
 

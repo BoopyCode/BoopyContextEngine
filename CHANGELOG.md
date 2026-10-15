@@ -2,17 +2,25 @@
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 
-## [Unreleased]
+## [0.1.6] - 2026-10-15
+
+The tool descriptions were rewritten. What mattered was not their length but their first words.
 
 ### Changed
 
-* `bce_get_project_overview` and `bce_get_status` are no longer described as mandatory ("CRITICAL -
-  CALL THIS TOOL FIRST", "ALWAYS use this tool"). An instruction that is always in scope was applied
-  to work that has nothing to do with it (writing a changelog entry, fixing a licence file), and an
-  agent followed it - once against a different project than the one the call was meant for. Both
-  descriptions now state the trigger and the counter-case (stale results, small projects, trivial
-  edits); the relevance rules live in `copilot-instructions.md`, which is the document a human
-  actually supports.
+* **`bce_get_project_overview` no longer opens with "CRITICAL - CALL THIS TOOL FIRST".** An
+  instruction that is unconditionally in scope is applied to work it has nothing to do with - in one
+  measured session an agent answered "fix the licence file" and "write a changelog entry" by mapping
+  a different project than the one it was editing. It now states the trigger ("the task needs the
+  shape of the project"), and the counter-case: skip it while already working inside a known file,
+  on a trivial edit, or when the call is not about the project being changed.
+* **`bce_get_status` is no longer described as the tool to call before relying on anything.** It now
+  says what it is for: stale or missing results, "is the index ready", large refactors.
+* The remaining four lost the same imperative framing (`PRIMARY CONTEXT SOURCE - ALWAYS use this`,
+  `ALWAYS use this instead of reading a whole file`, `MANDATORY before renaming`, `ALWAYS use this
+  before writing new tests`). Their triggers and, just as importantly, their "do NOT use it for"
+  cases are unchanged - only the always/never framing is gone, so a model weighs the description
+  instead of obeying a standing order that is already stale by the time it is read.
 
 ## [0.1.5] - 2026-10-15
 
