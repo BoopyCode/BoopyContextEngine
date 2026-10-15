@@ -9,7 +9,7 @@ import { registerCommands } from '../src/host/commands';
 import { registerLanguageModelTools } from '../src/host/tools';
 import { createTempDir, createTempProject } from './support/tempProject';
 import { __mock } from './mocks/vscode';
-import { renderDiagnosticsHtml } from '../src/host/commands';
+import { renderDiagnosticsBody, renderDiagnosticsHtml } from '../src/host/commands';
 
 let project: { dir: string; cleanup(): Promise<void> };
 let storage: { dir: string; cleanup(): Promise<void> };
@@ -140,17 +140,25 @@ describe('extension activation', () => {
 
     // BCE keeps its files in <extension storage>/bce-index.
     const logFile = path.join(storage.dir, 'bce-index', 'usage.jsonl');
-    await waitFor(async () =>
-      fs.access(logFile).then(
-        () => true,
-        () => false
-      )
-    );
-    const lines = (await fs.readFile(logFile, 'utf8')).trim().split('\n');
-    const entries = lines.map(
-      (line) => JSON.parse(line) as { tool: string; label?: string; returnedTokens: number; baselineTokens?: number }
-    );
-    // Earlier entries come from the status polling above, so the new calls are the last two.
+    const readLog = async (): Promise<{ tool: string; label?: string; returnedTokens: number; baselineTokens?: number }[]> => {
+      const text = await fs.readFile(logFile, 'utf8').catch(() => '');
+      return text
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as { tool: string; label?: string; returnedTokens: number; baselineTokens?: number });
+    };
+    // The writes are queued, so wait for the two new entries to land instead of assuming the log is
+    // complete the moment it exists. Earlier entries come from the status polling above.
+    await waitFor(async () => {
+      const written = await readLog();
+      return (
+        written.length >= 3 &&
+        written[written.length - 2]?.tool === 'bce_find_context' &&
+        written[written.length - 1]?.tool === 'bce_get_file_context'
+      );
+    });
+    const entries = await readLog();
     const search = entries[entries.length - 2];
     const file = entries[entries.length - 1];
     expect(search.tool).toBe('bce_find_context');
@@ -159,7 +167,7 @@ describe('extension activation', () => {
     expect(search.baselineTokens).toBeGreaterThan(0);
     expect(file.tool).toBe('bce_get_file_context');
     expect(file.label).toBe('src/services/orderService.ts#refund');
-    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(entries.length).toBeGreaterThanOrEqual(3);
 
     const status = await __mock.invokeTool('bce_get_status', { verbose: true });
     const statusText = (status as { content: { value: string }[] }).content[0].value;
@@ -287,12 +295,44 @@ describe('extension activation', () => {
     registerCommands(context as unknown as vscode.ExtensionContext, sessions, logger);
     registerLanguageModelTools(context as unknown as vscode.ExtensionContext, sessions, logger);
     await __mock.invokeTool('bce_get_status', {});
-    const html = renderDiagnosticsHtml(sessions);
+    const html = renderDiagnosticsHtml(sessions, 'test-nonce');
     expect(html).toContain('Boopy Context Engine - local diagnostics');
     expect(html).toContain('bce_get_status');
     expect(html).toContain('not</strong> the Copilot');
+    // The document must stay stable: refreshes arrive as messages, so the CSP has to allow exactly the
+    // nonce'd script that applies them.
+    expect(html).toContain("script-src 'nonce-test-nonce'");
+    expect(html).toContain('<script nonce="test-nonce">');
+    expect(html).toContain('bce:content');
+    expect(renderDiagnosticsBody(sessions)).toContain('bce_get_status');
     sessions.dispose();
     statusBar.dispose();
     logger.dispose();
+  });
+
+  it('loads the diagnostics webview once and refreshes it without reloading the document', async () => {
+    await activate(context as unknown as vscode.ExtensionContext);
+    await waitFor(async () => {
+      const status = await __mock.invokeTool('bce_get_status', {});
+      return (status as { content: { value: string }[] }).content[0].value.includes('complete: true');
+    });
+    await vscode.commands.executeCommand('bce.showDiagnostics');
+    const [panel] = __mock.state.webviewPanels;
+    expect(panel).toBeDefined();
+    expect(panel.htmlAssignments).toBe(1);
+
+    // Running the command again reveals the existing panel instead of loading a second document.
+    await vscode.commands.executeCommand('bce.showDiagnostics');
+    expect(__mock.state.webviewPanels.length).toBe(1);
+    expect(panel.htmlAssignments).toBe(1);
+
+    // Live refreshes are pushed into the running document; they never reassign webview.html, which is
+    // what used to race with the webview service worker.
+    const before = panel.postedMessages.length;
+    await waitFor(() => panel.postedMessages.length > before);
+    expect(panel.htmlAssignments).toBe(1);
+    const message = panel.postedMessages[panel.postedMessages.length - 1] as { type: string; body: string };
+    expect(message.type).toBe('bce:content');
+    expect(message.body).toContain('<h3>Counters</h3>');
   });
 });

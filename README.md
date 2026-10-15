@@ -19,11 +19,11 @@ Project home: **[boopycode.com](https://boopycode.com)** — questions, bugs and
 
 **A. Ready made build (no toolchain needed)**
 
-Download `bce-0.1.3.vsix` from the [latest release](https://github.com/BoopyCode/BoopyContextEngine/releases/latest)
+Download `bce-0.1.5.vsix` from the [latest release](https://github.com/BoopyCode/BoopyContextEngine/releases/latest)
 and install it:
 
 ```powershell
-code --install-extension bce-0.1.3.vsix
+code --install-extension bce-0.1.5.vsix
 ```
 
 Or in VS Code: Extensions view -> `...` -> **Install from VSIX...**
@@ -43,7 +43,7 @@ opens with BCE loaded - open any project there.
 ```powershell
 npm run vscode:prepublish
 npx @vscode/vsce package
-code --install-extension boopy-context-engine-0.1.3.vsix --force
+code --install-extension boopy-context-engine-0.1.5.vsix --force
 ```
 
 Restart VS Code, open a project, and check the status bar for `bce: Indexing` followed by
@@ -119,7 +119,7 @@ recommended prompt pattern is to ask for the tool explicitly on non-trivial task
 | `BCE: Rebuild Index` | Drops **both** cache layers and re-parses everything (asks first) |
 | `BCE: Show Project Map` | Opens a readable, read-only rendering of the project map |
 | `BCE: Search Context` | Quick pick over ranked hits; opens the chosen file at the best line |
-| `BCE: Show Diagnostics` | Webview with counters, timings, per-tool usage, recent events |
+| `BCE: Show Diagnostics` | Panel with counters, timings, per-tool usage and recent events; it updates in place and re-running the command reveals the open panel |
 | `BCE: Clear Cache` | Clears the parse cache and the context cache (index stays) |
 | `BCE: Pause Background Indexing` / `Resume` | Queues file events instead of processing them |
 | `BCE: Cancel Indexing` | Cancels the running pass; the last valid index is kept |
@@ -310,7 +310,7 @@ compared in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 7.
 
 ---
 
-## 11. Status - what works and what does not (v0.1.3)
+## 11. Status - what works and what does not (v0.1.5)
 
 Implemented and covered by tests:
 
@@ -350,6 +350,13 @@ Known limitations, stated plainly:
   `bce_get_related_tests` returns the file directly.
 * v0.1.x exposes tools and commands; there is no separate onboarding wizard or marketplace
   publishing pipeline.
+* `BCE: Show Diagnostics` is a webview, and VS Code's webview service worker breaks for *all*
+  extensions from time to time ("Error loading webview: Could not register service worker", see
+  [microsoft/vscode#247035](https://github.com/microsoft/vscode/issues/247035)). BCE loads the panel
+  document once and refreshes it with messages, so it no longer adds to that churn; if the panel still
+  reports the error, close every VS Code window and delete the `Service Worker` folder in your user
+  data directory (`%APPDATA%\Code\Service Worker` on Windows, `~/.config/Code/Service Worker` on
+  Linux). The same numbers stay readable in the BCE output channel (`bce.diagnostics.level`).
 * The full benchmark comparison (with and without BCE, including answer quality) still has to be
   run manually in a Copilot session; BCE only automates the local, measurable half.
 

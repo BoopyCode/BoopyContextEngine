@@ -25,6 +25,8 @@ export interface UsageRecord {
   candidateFiles?: number;
   durationMs: number;
   error?: boolean;
+  /** Why the call failed; without it a failed entry in the log is only a red zero. */
+  reason?: string;
 }
 
 export interface UsageTotals {
@@ -44,6 +46,8 @@ export interface UsageTotals {
 export interface UsageSummary {
   rootName: string;
   logFile: string;
+  /** Absolute path of the log when the caller knows it; helps the user inspect the raw file. */
+  logLocation?: string;
   /** False when the user turned the log off; the report then only covers the live session. */
   persisted: boolean;
   updatedAt: number;
@@ -58,6 +62,8 @@ export interface UsageLedgerDeps {
   rootName: string;
   /** Re-read on every record, so the setting takes effect without a reload. */
   enabled: () => boolean;
+  /** Absolute path of the log file, reported so the user can find it on disk. */
+  logLocation?: string;
   clock?: { now(): number };
   log?: (level: 'debug' | 'info' | 'warn', message: string) => void;
 }
@@ -136,6 +142,7 @@ export class UsageLedger {
     return {
       rootName: this.deps.rootName,
       logFile: this.logPath,
+      logLocation: this.deps.logLocation,
       persisted: this.deps.enabled(),
       updatedAt: this.now(),
       totals: this.totals(),
@@ -241,7 +248,8 @@ export function parseUsageLog(text: string): UsageRecord[] {
           baselineFiles: typeof parsed.baselineFiles === 'number' ? parsed.baselineFiles : undefined,
           candidateFiles: typeof parsed.candidateFiles === 'number' ? parsed.candidateFiles : undefined,
           durationMs: numberOr(parsed.durationMs, 0),
-          error: parsed.error === true ? true : undefined
+          error: parsed.error === true ? true : undefined,
+          reason: typeof parsed.reason === 'string' ? parsed.reason : undefined
         });
       }
     } catch {
@@ -259,16 +267,30 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A failed call shows why it failed; the label alone would hide the reason. */
+function formatCall(record: UsageRecord): string {
+  if (!record.error) {
+    return escapeCell(record.label);
+  }
+  const reason = record.reason && record.reason.length > 0 ? record.reason : 'failed';
+  return escapeCell(`FAILED: ${reason}`);
+}
+
 export function renderUsageReport(summary: UsageSummary): string {
   const lines: string[] = [];
   const totals = summary.totals;
   lines.push(`# BCE usage log - ${summary.rootName}`);
   lines.push('');
-  lines.push(
-    `entries: ${totals.calls}${totals.calls > 0 ? ` (first ${formatTime(totals.firstAt)}, last ${formatTime(totals.lastAt)})` : ''}`
-  );
-  lines.push(`log file: ${summary.logFile}${summary.persisted ? '' : ' (logging is turned off, only this session is shown)'}`);
+  lines.push(`entries: ${totals.calls}${totals.calls > 0 ? ` (first ${formatTime(totals.firstAt)}, last ${formatTime(totals.lastAt)})` : ''}`);
+  lines.push(`log file: ${summary.logLocation ?? summary.logFile}${summary.persisted ? '' : ' (logging is turned off, only this session is shown)'}`);
   lines.push('');
+  if (totals.calls === 0) {
+    lines.push('> **No `bce_*` tool call has been logged for this workspace yet.** BCE only measures its own');
+    lines.push('> six tools: if the work was done by reading files, searching or running commands with other');
+    lines.push('> tools, there is nothing to report here. Naming a BCE tool in the prompt (for example');
+    lines.push('> `bce_find_context`) or letting the agent call one fills this report.');
+    lines.push('');
+  }
   lines.push('## What the tools returned');
   lines.push('');
   lines.push('| metric | value |');
@@ -303,7 +325,7 @@ export function renderUsageReport(summary: UsageSummary): string {
     lines.push('| --- | --- | --- | --- | --- | --- |');
     for (const record of summary.recent.slice(0, 20)) {
       lines.push(
-        `| ${formatTime(record.at)} | ${record.tool} | ${escapeCell(record.label)} | ~${record.returnedTokens} | ${
+        `| ${formatTime(record.at)} | ${record.tool} | ${formatCall(record)} | ~${record.returnedTokens} | ${
           typeof record.baselineTokens === 'number' ? `~${record.baselineTokens}` : 'n/a'
         } | ${Math.round(record.durationMs)} |`
       );

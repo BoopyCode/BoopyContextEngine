@@ -7,7 +7,7 @@ import { IndexStore } from '../core/index/indexStore';
 import { IgnoreEngine } from '../core/ignore/ignoreEngine';
 import { ParserRegistry } from '../core/parse/registry';
 import { Metrics } from '../core/diagnostics/metrics';
-import { UsageLedger } from '../core/diagnostics/usageLedger';
+import { UsageLedger, USAGE_LOG_FILE } from '../core/diagnostics/usageLedger';
 import { ContextCache } from '../core/cache/contextCache';
 import { GitClient } from '../core/vcs/git';
 import { ProjectIndexer } from '../core/index/projectIndexer';
@@ -121,6 +121,7 @@ export class WorkspaceSession implements vscode.Disposable {
       store: new NodeStoreFs(uri.fsPath),
       rootName: folder.name,
       enabled: () => readWorkspaceConfig(folder).usageLog,
+      logLocation: vscode.Uri.joinPath(uri, USAGE_LOG_FILE).fsPath,
       log: (level, message) => logger.log(level, `[${folder.name}] ${message}`)
     });
     const session = new WorkspaceSession(folder, config, extensionContext, logger, statusBar, uri, insideProject, usage);

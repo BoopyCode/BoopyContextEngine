@@ -294,26 +294,74 @@ export function registerCommands(context: vscode.ExtensionContext, sessions: Ses
   );
 }
 
+const DIAGNOSTICS_CONTENT_MESSAGE = 'bce:content';
+const DIAGNOSTICS_READY_MESSAGE = 'bce:ready';
+
+let diagnosticsPanel: vscode.WebviewPanel | undefined;
+
 function showDiagnosticsPanel(context: vscode.ExtensionContext, sessions: SessionManager): void {
+  if (diagnosticsPanel) {
+    diagnosticsPanel.reveal(vscode.ViewColumn.Active);
+    return;
+  }
   const panel = vscode.window.createWebviewPanel('bce.diagnostics', 'BCE Diagnostics', vscode.ViewColumn.Active, {
-    enableScripts: false,
+    enableScripts: true,
     localResourceRoots: []
   });
-  const render = (): void => {
-    panel.webview.html = renderDiagnosticsHtml(sessions);
+  const nonce = createNonce();
+  // The document is loaded exactly once and every refresh is pushed into the running document with
+  // postMessage. Reassigning webview.html reloads the document, and doing that on a timer raced with
+  // the webview service worker: VS Code gave up and showed "Could not register service worker"
+  // instead of the diagnostics.
+  panel.webview.html = renderDiagnosticsHtml(sessions, nonce);
+  let lastPushed: string | undefined;
+  const push = (): void => {
+    const body = renderDiagnosticsBody(sessions);
+    if (body === lastPushed) {
+      return;
+    }
+    lastPushed = body;
+    void panel.webview.postMessage({ type: DIAGNOSTICS_CONTENT_MESSAGE, body });
   };
-  render();
-  const subscription = sessions.onDidChange(render);
-  const interval = setInterval(render, 2000);
+  const subscription = sessions.onDidChange(push);
+  const ready = panel.webview.onDidReceiveMessage((message: unknown) => {
+    if (typeof message === 'object' && message !== null && (message as { type?: unknown }).type === DIAGNOSTICS_READY_MESSAGE) {
+      push();
+    }
+  });
+  const interval = setInterval(() => {
+    if (panel.visible) {
+      push();
+    }
+  }, 2000);
+  diagnosticsPanel = panel;
   panel.onDidDispose(() => {
+    diagnosticsPanel = undefined;
     subscription.dispose();
+    ready.dispose();
     clearInterval(interval);
   });
   context.subscriptions.push(panel);
 }
 
-export function renderDiagnosticsHtml(sessions: SessionManager): string {
+function createNonce(): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let nonce = '';
+  for (let index = 0; index < 32; index += 1) {
+    nonce += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return nonce;
+}
+
+export function renderDiagnosticsBody(sessions: SessionManager): string {
   const sections: string[] = [];
+  sections.push(`
+    <p class="note">
+      Everything here is measured locally inside VS Code. Token numbers are estimates produced by BCE
+      (${escapeHtml('chars/4 + token correction')}) and are <strong>not</strong> the Copilot or model provider billing numbers.
+      A cache hit only saves local work: sending the same context to a model can still be billed.
+    </p>
+  `);
   const all = sessions.all();
   if (all.length === 0) {
     sections.push('<p>No workspace folder is open, so BCE has nothing to analyze.</p>');
@@ -373,11 +421,15 @@ export function renderDiagnosticsHtml(sessions: SessionManager): string {
       </section>
     `);
   }
+  return sections.join('\n');
+}
+
+export function renderDiagnosticsHtml(sessions: SessionManager, nonce: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
 <title>BCE Diagnostics</title>
 <style>
   body { font-family: var(--vscode-font-family); padding: 1rem; color: var(--vscode-foreground); }
@@ -392,12 +444,20 @@ export function renderDiagnosticsHtml(sessions: SessionManager): string {
 </head>
 <body>
   <h1>Boopy Context Engine - local diagnostics</h1>
-  <p class="note">
-    Everything here is measured locally inside VS Code. Token numbers are estimates produced by BCE
-    (${escapeHtml('chars/4 + token correction')}) and are <strong>not</strong> the Copilot or model provider billing numbers.
-    A cache hit only saves local work: sending the same context to a model can still be billed.
-  </p>
-  ${sections.join('\n')}
+  <div id="bce-content">${renderDiagnosticsBody(sessions)}</div>
+  <script nonce="${nonce}">
+    (function () {
+      var api = acquireVsCodeApi();
+      var content = document.getElementById('bce-content');
+      window.addEventListener('message', function (event) {
+        var message = event.data;
+        if (message && message.type === '${DIAGNOSTICS_CONTENT_MESSAGE}' && content) {
+          content.innerHTML = message.body;
+        }
+      });
+      api.postMessage({ type: '${DIAGNOSTICS_READY_MESSAGE}' });
+    })();
+  </script>
 </body>
 </html>`;
 }

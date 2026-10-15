@@ -95,18 +95,22 @@ class BceTool<T> implements vscode.LanguageModelTool<T> {
       return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(payload.text)]);
     } catch (error) {
       const durationMs = Date.now() - startedAt;
+      const detail = describeError(error);
+      // The message repeats the tool name because VS Code only surfaces the error type ("failed")
+      // to the user, so the reason has to travel inside the message itself.
+      const message = `${this.definition.name} failed: ${detail}`;
       session.metrics.recordToolCall(this.definition.name, 0, 0, durationMs, true);
       session.usage?.record({
         tool: this.definition.name,
         returnedTokens: 0,
         characters: 0,
         durationMs,
-        error: true
+        error: true,
+        reason: detail
       });
-      session.metrics.recordEvent('error', `${this.definition.name} failed: ${error instanceof Error ? error.message : String(error)}`);
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.log('warn', `${this.definition.name} failed: ${message}`);
-      throw new Error(`${this.definition.name} failed: ${message}`);
+      session.metrics.recordEvent('error', message);
+      this.logger.log('warn', message);
+      throw new Error(message);
     }
   }
 
@@ -213,8 +217,13 @@ export function registerLanguageModelTools(
   const registered: vscode.Disposable[] = [];
   for (const definition of DEFINITIONS) {
     const tool = new BceTool(definition, sessions, logger);
-    registered.push(vscode.lm.registerTool(definition.name, tool));
-    logger.log('info', `Registered language model tool ${definition.name}.`);
+    try {
+      registered.push(vscode.lm.registerTool(definition.name, tool));
+      logger.log('info', `Registered language model tool ${definition.name}.`);
+    } catch (error) {
+      // One tool VS Code refuses to register must not take the other five down with it.
+      logger.log('warn', `${definition.name} could not be registered: ${describeError(error)}`);
+    }
   }
   const disposable = {
     dispose: () => {
@@ -225,4 +234,11 @@ export function registerLanguageModelTools(
   };
   context.subscriptions.push(disposable);
   return registered;
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.length > 0 ? error.message : error.name;
+  }
+  return String(error);
 }

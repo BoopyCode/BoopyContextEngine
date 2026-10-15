@@ -6,10 +6,43 @@ All notable changes to the Boopy Context Engine (BCE) are documented here.
 
 ### Changed
 
-* **Licence changed from MIT to MIT + Commons Clause** (`LICENSE`). Personal, non-commercial,
-  educational, non-commercial open source and short-term evaluation use stay free; every commercial
-  use now requires a separate written commercial licence from BoopyCode. `package.json` declares
-  `"license": "SEE LICENSE IN LICENSE"`, and README section 13 documents what is and is not allowed.
+* `bce_get_project_overview` and `bce_get_status` are no longer described as mandatory ("CRITICAL -
+  CALL THIS TOOL FIRST", "ALWAYS use this tool"). An instruction that is always in scope was applied
+  to work that has nothing to do with it (writing a changelog entry, fixing a licence file), and an
+  agent followed it - once against a different project than the one the call was meant for. Both
+  descriptions now state the trigger and the counter-case (stale results, small projects, trivial
+  edits); the relevance rules live in `copilot-instructions.md`, which is the document a human
+  actually supports.
+
+## [0.1.5] - 2026-10-15
+
+A bug-fix release for the two things that made BCE look broken without saying why: the diagnostics
+panel reloading itself every two seconds, and a failed tool call reporting nothing but "failed".
+
+### Added
+
+* `BCE: Show Usage Report` now says plainly that no `bce_*` tool call has been logged yet instead of
+  only printing zeroes, explains that BCE can only measure its own six tools, and prints the absolute
+  path of `usage.jsonl` so the raw file can be inspected.
+* A failed `bce_*` call now records **why** it failed (`reason` in `usage.jsonl`) and the usage report
+  shows it as `FAILED: <reason>` instead of a silent zero, plus a `1 failed` note on the call count.
+
+### Fixed
+
+* **The diagnostics panel no longer replaces its own document every two seconds.** `BCE: Show
+  Diagnostics` reassigned `webview.html` on a timer, and every assignment reloads the whole webview
+  document (which also reset scroll position and lost the reading position). The document is now
+  rendered once and live refreshes are pushed into it with `postMessage`; running the command again
+  reveals the already open panel instead of opening a second one. Repeatedly reloading a webview
+  document is one of the ways VS Code ends up showing "Error loading webview: Could not register
+  service worker" instead of content, so this removes BCE's contribution to that VS Code bug (see
+  [microsoft/vscode#247035](https://github.com/microsoft/vscode/issues/247035), whose workaround is
+  closing all VS Code windows and deleting the `Service Worker` folder in the user data directory).
+* **One tool that VS Code refuses to register no longer disables the other five.** The extension
+  reported every tool as registered even when `vscode.lm.registerTool` threw, so a bad contribution
+  for a single tool silently removed it from Copilot while the other tools kept working. Registration
+  is now guarded per tool, the warning names the tool, and a failure to register no longer prevents
+  the remaining tools from being registered.
 
 ## [0.1.4] - 2026-10-15
 

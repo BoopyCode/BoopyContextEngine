@@ -177,5 +177,49 @@ describe('usage reporting', () => {
     expect(ledgerReport).toContain('| estimated tokens avoided | ~4600 (92% smaller) |');
     expect(ledgerReport).toContain('local estimates');
     expect(ledgerReport).toContain('order \\| refund');
+    expect(ledgerReport).not.toContain('No `bce_*` tool call has been logged');
+  });
+
+  it('shows why a failed call failed', () => {
+    const record = { at: 1, tool: 'bce_get_project_overview', returnedTokens: 0, characters: 0, durationMs: 1, error: true, reason: 'boom' };
+    const failed = renderUsageReport({
+      rootName: 'fixture',
+      logFile: USAGE_LOG_FILE,
+      persisted: true,
+      updatedAt: 1,
+      totals: computeTotals([record]),
+      perTool: [{ tool: 'bce_get_project_overview', totals: computeTotals([record]) }],
+      recent: [record]
+    });
+
+    expect(failed).toContain('| tool calls | 1 (1 failed) |');
+    expect(failed).toContain('FAILED: boom');
+  });
+
+  it('keeps the failure reason when the log is read back from disk', () => {
+    const records = parseUsageLog('{"at":1,"tool":"bce_get_status","returnedTokens":0,"characters":0,"durationMs":2,"error":true,"reason":"index missing"}\n');
+
+    expect(records).toHaveLength(1);
+    expect(records[0].error).toBe(true);
+    expect(records[0].reason).toBe('index missing');
+  });
+
+  it('explains an empty report instead of only printing zeroes', () => {
+    const empty = renderUsageReport({
+      rootName: 'fixture',
+      logFile: USAGE_LOG_FILE,
+      logLocation: `C:\\bce\\${USAGE_LOG_FILE}`,
+      persisted: true,
+      updatedAt: 1,
+      totals: computeTotals([]),
+      perTool: [],
+      recent: []
+    });
+
+    expect(empty).toContain('entries: 0');
+    expect(empty).toContain('No `bce_*` tool call has been logged for this workspace yet');
+    expect(empty).toContain(`log file: C:\\bce\\${USAGE_LOG_FILE}`);
+    expect(empty).not.toContain('## Per tool');
+    expect(empty).not.toContain('## Recent calls');
   });
 });

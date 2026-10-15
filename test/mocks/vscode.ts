@@ -151,6 +151,7 @@ export interface MockState {
   failWrites: boolean;
   openedDocuments: string[];
   textDocuments: MockTextDocument[];
+  webviewPanels: MockWebviewPanel[];
   reset(): void;
 }
 
@@ -181,6 +182,25 @@ export interface MockTextDocument {
   getText(): string;
 }
 
+export interface MockWebviewPanel {
+  readonly viewType: string;
+  readonly title: string;
+  visible: boolean;
+  disposed: boolean;
+  /** Every assignment to `webview.html` reloads the document in the real extension host. */
+  htmlAssignments: number;
+  readonly postedMessages: unknown[];
+  readonly webview: {
+    html: string;
+    readonly cspSource: string;
+    postMessage(message: unknown): Promise<boolean>;
+    onDidReceiveMessage(listener: (message: unknown) => unknown): { dispose(): void };
+  };
+  reveal(): void;
+  dispose(): void;
+  onDidDispose(listener: () => void): { dispose(): void };
+}
+
 const state: MockState = {
   tools: new Map(),
   commands: new Map(),
@@ -194,6 +214,7 @@ const state: MockState = {
   failWrites: false,
   openedDocuments: [],
   textDocuments: [],
+  webviewPanels: [],
   reset(): void {
     state.tools.clear();
     state.commands.clear();
@@ -207,6 +228,7 @@ const state: MockState = {
     state.failWrites = false;
     state.openedDocuments.length = 0;
     state.textDocuments.length = 0;
+    state.webviewPanels.length = 0;
   }
 };
 
@@ -442,12 +464,57 @@ export const window = {
   async withProgress<T>(_options: unknown, task: (progress: { report(value: unknown): void }, token: unknown) => Promise<T>): Promise<T> {
     return task({ report: () => undefined }, cancellationToken());
   },
-  createWebviewPanel(): { webview: { html: string }; onDidDispose(listener: () => void): { dispose(): void }; dispose(): void } {
-    const panel = {
-      webview: { html: '' },
-      onDidDispose: () => ({ dispose: () => undefined }),
-      dispose: () => undefined
+  createWebviewPanel(viewType: string, title: string): MockWebviewPanel {
+    const disposeListeners: (() => void)[] = [];
+    const messageListeners: ((message: unknown) => unknown)[] = [];
+    let html = '';
+    const panel: MockWebviewPanel = {
+      viewType,
+      title,
+      visible: true,
+      disposed: false,
+      htmlAssignments: 0,
+      postedMessages: [],
+      webview: {
+        get html(): string {
+          return html;
+        },
+        set html(value: string) {
+          html = value;
+          panel.htmlAssignments += 1;
+        },
+        cspSource: 'vscode-webview://mock',
+        async postMessage(message: unknown): Promise<boolean> {
+          if (panel.disposed) {
+            return false;
+          }
+          panel.postedMessages.push(message);
+          return true;
+        },
+        onDidReceiveMessage(listener: (message: unknown) => unknown): { dispose(): void } {
+          messageListeners.push(listener);
+          return { dispose: () => messageListeners.splice(messageListeners.indexOf(listener), 1) };
+        }
+      },
+      reveal(): void {
+        panel.visible = true;
+      },
+      dispose(): void {
+        if (panel.disposed) {
+          return;
+        }
+        panel.disposed = true;
+        panel.visible = false;
+        for (const listener of [...disposeListeners]) {
+          listener();
+        }
+      },
+      onDidDispose(listener: () => void): { dispose(): void } {
+        disposeListeners.push(listener);
+        return { dispose: () => disposeListeners.splice(disposeListeners.indexOf(listener), 1) };
+      }
     };
+    state.webviewPanels.push(panel);
     return panel;
   },
   async showTextDocument(document: { uri?: Uri; content?: string }): Promise<{ selection: unknown; revealRange(): void }> {
