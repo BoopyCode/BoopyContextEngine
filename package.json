@@ -2,7 +2,7 @@
   "name": "boopy-context-engine",
   "displayName": "Boopy Context Engine (BCE)",
   "description": "Local project indexing, project map and token-efficient context tools for GitHub Copilot Agent mode. Works fully offline, no paid AI API required.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "BoopyCode",
   "author": {
     "name": "BoopyCode"
@@ -292,6 +292,16 @@
         "category": "BCE"
       },
       {
+        "command": "bce.showUsageReport",
+        "title": "BCE: Show Usage Report",
+        "category": "BCE"
+      },
+      {
+        "command": "bce.resetUsageLog",
+        "title": "BCE: Reset Usage Log",
+        "category": "BCE"
+      },
+      {
         "command": "bce.pauseIndexing",
         "title": "BCE: Pause Background Indexing",
         "category": "BCE"
@@ -425,6 +435,11 @@
           "minimum": 0,
           "maximum": 365,
           "description": "Window used to boost recently modified files (from git when available)."
+        },
+        "bce.usageLog.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep an append only log of bce_* tool calls plus an estimate of what a naive file read would have cost. The log stays in BCE storage, is never uploaded, and can be deleted with \"BCE: Reset Usage Log\"."
         },
         "bce.tools.projectOverview.enabled": {
           "type": "boolean",

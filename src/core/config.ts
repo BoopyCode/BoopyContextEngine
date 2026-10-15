@@ -17,6 +17,8 @@ export interface WorkspaceConfig {
   maxSearchResults: number;
   snippetLines: number;
   recencyDays: number;
+  /** Keeps an append only log of tool calls plus the estimated naive baseline. */
+  usageLog: boolean;
   tools: {
     projectOverview: boolean;
     findContext: boolean;
@@ -43,6 +45,7 @@ export const defaultWorkspaceConfig: WorkspaceConfig = {
   maxSearchResults: 12,
   snippetLines: 12,
   recencyDays: 14,
+  usageLog: true,
   tools: {
     projectOverview: true,
     findContext: true,

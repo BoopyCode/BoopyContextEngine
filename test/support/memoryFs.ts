@@ -159,6 +159,12 @@ export class MemoryStoreFs {
     this.writes.push(key);
   }
 
+  async appendText(relPath: string, content: string): Promise<void> {
+    const key = normalizeRel(relPath);
+    this.files.set(key, `${this.files.get(key) ?? ''}${content}`);
+    this.writes.push(key);
+  }
+
   async exists(relPath: string): Promise<boolean> {
     return this.files.has(normalizeRel(relPath));
   }

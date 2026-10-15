@@ -2,23 +2,39 @@
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 
-## [Unreleased]
+## [0.1.4] - 2026-10-15
+
+Answering "how much did BCE actually save?" with data instead of a promise.
+
+### Added
+
+* **Usage log** (`bce.usageLog.enabled`, default on): every `bce_*` call is appended to
+  `usage.jsonl` in BCE's storage (next to the index) together with the estimated tokens it returned
+  and, where a naive alternative exists, the estimated tokens that alternative would have cost.
+  Baselines are deliberately conservative: `bce_find_context` is compared against reading every
+  file whose path or symbol names match a query term, `bce_get_file_context` against reading that
+  whole file, and the other tools are logged without a baseline instead of inventing one. The log is
+  local only, rotated at 512 KB, and never leaves the machine.
+* `BCE: Show Usage Report` renders the log (totals, per tool, recent calls, how to read it) and
+  `BCE: Reset Usage Log` deletes it after a confirmation.
+* `bce_get_status --verbose` now reports `estimated context avoided` and where the log lives.
+* `test/usage.test.ts` (10 tests) plus a host level test that a real tool call writes the log, shows
+  up in the status output and in the rendered report.
 
 ### Fixed
 
-* **Switching CRLF projects no longer rewrites their `.gitignore`.** `replaceManagedBlock`
-  matched only `\n` when trimming the text after the managed block and always wrote the block with
-  `LF`, so on a Windows checkout every run added another blank line and mixed the line endings.
-  The writer now detects the file's line ending and keeps the block byte identical; verified on
-  this repository (running BCE on it leaves `git status` clean) and covered by a CRLF regression
-  test in `test/gitignore.test.ts`.
+* **The managed `.gitignore` block is CRLF safe.** The block was rewritten with `LF` and the text
+  after it was trimmed with an `LF` only pattern, so on a Windows checkout every activation added
+  another blank line to `.gitignore`. The writer now uses the file's own line ending; verified on
+  this repository (BCE leaves `git status` clean) and pinned by a CRLF regression test.
 
 ### Changed
 
-* `scripts/measure.mjs` measures any project, not only the generated one: the benchmark command
-  runs first and its tasks (from `<project>/.bce-benchmark.json` or derived from the project's own
-  map) are reused for the latency loop.
-* README install section starts with the release VSIX.
+* The naive baseline calculation moved to `core/benchmark/baseline.ts`, shared by the benchmark and
+  the live usage log, so both report the same number for the same query.
+* `scripts/measure.mjs` measures any project: it runs the benchmark command first and reuses the
+  tasks that produced (from `.bce-benchmark.json` or derived from the project map).
+* Test harness waits are generous, because the indexer tests failed on a loaded machine.
 
 ## [0.1.3] - 2026-10-15
 

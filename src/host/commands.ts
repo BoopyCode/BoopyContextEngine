@@ -4,6 +4,7 @@ import { SessionManager, WorkspaceSession } from './session';
 import { ensureBceGitIgnored } from './gitignore';
 import { describeIndexErrors } from '../core/map/projectMap';
 import { renderBenchmarkReport, deriveBenchmarkTasks, parseBenchmarkTasks, runLocalBenchmark } from '../core/benchmark/benchmark';
+import { renderUsageReport } from '../core/diagnostics/usageLedger';
 
 export function registerCommands(context: vscode.ExtensionContext, sessions: SessionManager, logger: BceLogger): void {
   const requireSession = (): WorkspaceSession | undefined => {
@@ -189,6 +190,38 @@ export function registerCommands(context: vscode.ExtensionContext, sessions: Ses
       void vscode.window.showInformationMessage('BCE: both cache layers were cleared. The index itself was kept; use "BCE: Rebuild Index" to re-parse everything.');
     }),
 
+    vscode.commands.registerCommand('bce.showUsageReport', async () => {
+      const session = requireSession();
+      if (!session) {
+        return;
+      }
+      await session.usage.flush();
+      const summary = session.usage.summary();
+      const report = renderUsageReport(summary);
+      logger.log('info', report);
+      logger.show();
+      const document = await vscode.workspace.openTextDocument({ content: report, language: 'markdown' });
+      await vscode.window.showTextDocument(document, { preview: true });
+    }),
+
+    vscode.commands.registerCommand('bce.resetUsageLog', async () => {
+      const session = requireSession();
+      if (!session) {
+        return;
+      }
+      const answer = await vscode.window.showWarningMessage(
+        `BCE: delete the usage log of ${session.rootName}? The estimate of avoided context starts over.`,
+        { modal: true },
+        'Delete'
+      );
+      if (answer !== 'Delete') {
+        return;
+      }
+      await session.usage.clear();
+      session.metrics.recordEvent('info', 'Usage log cleared by the user.');
+      void vscode.window.showInformationMessage('BCE: usage log deleted.');
+    }),
+
     vscode.commands.registerCommand('bce.pauseIndexing', () => {
       for (const session of sessions.enabled()) {
         session.indexer.pause();
@@ -300,6 +333,17 @@ export function renderDiagnosticsHtml(sessions: SessionManager): string {
           `<tr><td>${escapeHtml(name)}</td><td>${stat.calls}</td><td>${stat.characters}</td><td>~${stat.estimatedTokens}</td><td>${stat.durationMs} ms</td><td>${stat.errors}</td></tr>`
       )
       .join('');
+    const usage = session.usage;
+    const usageTotals = usage.totals();
+    const usageRows = [
+      ['logged entries', String(usage.size)],
+      ['estimated tokens returned by BCE', `~${usageTotals.returnedTokens}`],
+      ['estimated tokens of the naive alternative', `~${usageTotals.baselineTokens} (${usageTotals.callsWithBaseline} call(s))`],
+      ['estimated tokens avoided', `~${usageTotals.savedTokens} (${usageTotals.savedPercent}% smaller)`],
+      ['log file', `${escapeHtml(usage.file)}${usage.isPersisted ? '' : ' (logging disabled by setting)'}`]
+    ]
+      .map(([key, value]) => `<tr><td>${key}</td><td>${value}</td></tr>`)
+      .join('');
     const events = metrics.recentEvents
       .slice(-25)
       .reverse()
@@ -319,6 +363,10 @@ export function renderDiagnosticsHtml(sessions: SessionManager): string {
         <h3>Tool usage (this session)</h3>
         <table><thead><tr><th>Tool</th><th>Calls</th><th>Characters</th><th>Estimated tokens</th><th>Duration</th><th>Errors</th></tr></thead><tbody>${
           tools || '<tr><td colspan="6">no tool was called yet</td></tr>'
+        }</tbody></table>
+        <h3>Estimated context avoided (persistent usage log)</h3>
+        <table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>${
+          usageRows || '<tr><td colspan="2">no usage log</td></tr>'
         }</tbody></table>
         <h3>Recent events</h3>
         <ul>${events || '<li>none</li>'}</ul>

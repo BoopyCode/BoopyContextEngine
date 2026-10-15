@@ -125,6 +125,8 @@ recommended prompt pattern is to ask for the tool explicitly on non-trivial task
 | `BCE: Cancel Indexing` | Cancels the running pass; the last valid index is kept |
 | `BCE: Ensure BCE Output Is Git-Ignored` | Re-applies the managed `.gitignore` block |
 | `BCE: Run Local Benchmark` | Measures ranking quality and context size against a naive baseline |
+| `BCE: Show Usage Report` | Renders the local usage log: calls, tokens returned, estimated tokens avoided |
+| `BCE: Reset Usage Log` | Deletes the usage log after a confirmation |
 
 ---
 
@@ -147,6 +149,7 @@ recommended prompt pattern is to ask for the tool explicitly on non-trivial task
 | `bce.search.maxResults` | `12` | Max ranked hits per search |
 | `bce.search.snippetLines` | `12` | Max source lines per hit |
 | `bce.git.recencyDays` | `14` | Window for the "recently changed" boost |
+| `bce.usageLog.enabled` | `true` | Append only log of tool calls and estimated naive baseline |
 | `bce.tools.*.enabled` | `true` | Enable/disable each of the six tools individually |
 
 Project level defaults can also live in `.bceignore` (same syntax as `.gitignore`) and in
@@ -202,6 +205,10 @@ provider's invoice, because VS Code extensions have no access to Copilot/DeepSee
   calls per tool, characters and *estimated* tokens returned, search time, bundle size, errors.
 * `BCE: Run Local Benchmark` - derives reproducible tasks from your own project (or reads
   `.bce-benchmark.json`), and compares "what BCE returned" with "reading every candidate file".
+* **Usage log** - every tool call is appended to `usage.jsonl` in BCE storage with the estimated
+  tokens it returned and, where a fair comparison exists, the estimated tokens the naive route
+  would have cost. `BCE: Show Usage Report` opens it, `bce_get_status --verbose` summarises it,
+  `BCE: Reset Usage Log` deletes it, and `bce.usageLog.enabled` turns it off.
 
 A run on the repository's own fixture project (`test/fixtures/sample-project`, 27 files, budget
 900 estimated tokens per task, snippets disabled - measured, not estimated):
@@ -217,7 +224,7 @@ Reproduce it with `npm test` (see `test/benchmark.test.ts`) or by running `BCE: 
 in your own project.
 
 A second, larger measured run on a generated 618-file project (577 indexed, 12 tasks) is documented
-in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 6, together with the before/after-install
+in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 7, together with the before/after-install
 comparison:
 
 ```text
@@ -227,6 +234,18 @@ estimated context: ~8634 tokens vs ~171270 tokens for the naive baseline (95% sm
 
 Reproduce it with `node scripts/generate-project.mjs` and `node scripts/measure.mjs` (dev tooling,
 not part of the packaged extension).
+
+### What BCE saved in one real project
+
+The usage log answers this on your own project: it records every tool call, the estimated tokens it
+returned, and - where a fair naive alternative exists - what that alternative would have cost. On
+this repository (120 files, 663 KB, roughly 170 000 tokens if read whole) the local benchmark reports
+6 tasks with a 100 % hit rate, mean rank 2.8, and ~3 902 estimated tokens instead of ~243 211 for
+reading every candidate file (98.4 % smaller).
+
+The same log makes the opposite honest case visible: on a small project a 300 token budgeted search
+can be *larger* than the handful of files the naive route would have opened, and the report lists
+those calls too - that is why the totals show both numbers instead of only the saving.
 
 Treat the baseline as an *estimate of reading work avoided*, and validate the end result with
 your own agent session: quality, number of agentic steps and billed usage need a real chat.
@@ -287,7 +306,7 @@ code --uninstall-extension boopycode.boopy-context-engine
 and the licence - never `src/`, `test/` or `scripts/`.
 
 Measured behaviour of the development bundle, the production bundle and the installed extension is
-compared in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 6.
+compared in [docs/BENCHMARK.md](docs/BENCHMARK.md) section 7.
 
 ---
 

@@ -2,6 +2,7 @@ import { WorkspaceIntelligence } from '../workspace';
 import { defaultTokenEstimator } from '../util/tokens';
 import { baseName } from '../util/paths';
 import { splitIdentifier } from '../util/paths';
+import { estimateNaiveBaseline } from './baseline';
 
 export interface BenchmarkTask {
   id: string;
@@ -142,16 +143,9 @@ export async function runLocalBenchmark(
       }
     }
 
-    const terms = splitIdentifier(task.query.toLowerCase());
-    const baselineFiles = ws.index
-      .allFiles()
-      .filter((file) => {
-        const haystack = `${file.path.toLowerCase()} ${file.symbols.map((symbol) => symbol.name.toLowerCase()).join(' ')}`;
-        return terms.some((term) => term.length >= 3 && haystack.includes(term));
-      })
-      .filter((file) => file.kind !== 'test' || task.expectedPaths.some((path) => path.includes('test')));
-
-    const baselineEstimatedTokens = baselineFiles.reduce((total, file) => total + Math.round(file.size / 4), 0);
+    const baseline = estimateNaiveBaseline(ws.index, task.query, {
+      includeTests: task.expectedPaths.some((path) => path.includes('test'))
+    });
 
     outcomes.push({
       taskId: task.id,
@@ -160,8 +154,8 @@ export async function runLocalBenchmark(
       bestRank,
       returnedPaths,
       bceEstimatedTokens: bundle.estimatedTokens,
-      baselineEstimatedTokens,
-      baselineFiles: baselineFiles.length,
+      baselineEstimatedTokens: baseline.estimatedTokens,
+      baselineFiles: baseline.files,
       durationMs: clock.now() - startedAt
     });
   }

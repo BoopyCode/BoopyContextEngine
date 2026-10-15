@@ -65,8 +65,36 @@ symbols contain a query term. The baseline grows with repository size and query 
 BCE bundle stays bounded by `maxTokens` - which is exactly the property the benchmark is meant to
 observe. Do not quote this ratio as a general result; run it on your own project.
 
-## 5. Comparing with and without BCE in a real session
+## 5. The usage log: what BCE actually saved in your project
 
+The benchmark measures a fixed task set. The **usage log** measures what really happened:
+
+* every `bce_*` call is appended to `usage.jsonl` in BCE storage with the estimated tokens it
+  returned and, where a fair naive alternative exists, the estimated tokens that alternative would
+  have cost;
+* `BCE: Show Usage Report` renders it; `bce_get_status --verbose` shows the running totals;
+* `BCE: Reset Usage Log` clears it (use it before an experiment), `bce.usageLog.enabled: false`
+  switches it off and `bce.diagnostics.level` does not affect it.
+
+Which calls get a baseline, and which deliberately do not:
+
+| tool | baseline |
+| --- | --- |
+| `bce_find_context` | estimated tokens of reading every file whose path or symbol names match a query term |
+| `bce_get_file_context` | estimated tokens of reading that whole file |
+| `bce_get_project_overview`, `bce_explain_impact`, `bce_get_related_tests`, `bce_get_status` | none - they replace searching or reading in ways that have no single honest "without BCE" price |
+
+Reading the numbers honestly:
+
+* a **negative or zero saving is possible** and is reported as such: on a small project a 300 token
+  budgeted search can cost more than opening the two files the naive route would have opened. The
+  report always shows both sides (returned and baseline) instead of only the difference;
+* the baseline is an *upper bound*: a real agent might read fewer files and miss the answer, or read
+  more and waste tokens;
+* these are local estimates from a character based estimator, **not** the provider's billing, and
+  they say nothing about answer quality. Only the A/B in section 6 above can speak to that.
+
+## 6. Comparing with and without BCE in a real session
 For a genuine A/B, keep everything else equal:
 
 1. Pick three tasks of different size (one-file change, cross-module feature, refactor).
@@ -79,7 +107,7 @@ For a genuine A/B, keep everything else equal:
 BCE cannot collect step counts or chat token usage itself; that data comes from your Copilot
 session, and only then is it meaningful to compare totals.
 
-## 6. Measured reference run (synthetic project, 0.1.2)
+## 7. Measured reference run (synthetic project, 0.1.2)
 
 This run answers a narrower question: **does the extension behave the same before and after it is
 installed into VS Code, and what does it cost at activation time?**
@@ -143,7 +171,7 @@ so much between rounds.
 * **Cold vs warm.** The first `bce_find_context` after activation costs 0.2 - 0.5 s (module warm-up
   plus the first ranking pass), every later call is ~1 ms.
 * **Still not measured:** answer quality, agent step count and billed usage. Those need a real
-  Copilot session (section 5).
+  Copilot session (section 6).
 * **One honest miss.** `test-lookup` ("Service04_0 test compute", expecting
   `tests/mod04/service0.test.ts`) is not returned inside the 12-hit window: the six
   `src/mod04/service*.ts` implementations that define the symbol outrank it. The top hit still

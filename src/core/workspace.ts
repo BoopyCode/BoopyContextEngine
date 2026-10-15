@@ -16,6 +16,7 @@ import { ProjectIndex } from './index/indexModel';
 import { ProjectIndexer } from './index/projectIndexer';
 import { ContextCache } from './cache/contextCache';
 import { Metrics } from './diagnostics/metrics';
+import { UsageLedger } from './diagnostics/usageLedger';
 import { GitClient, RecentChanges } from './vcs/git';
 import { ContextBundle, ContextRetriever, RetrieveOptions } from './retrieve/contextRetriever';
 import { LineRange, renderSnippet } from './retrieve/snippets';
@@ -89,6 +90,8 @@ export class WorkspaceIntelligence {
       documents?: OpenDocumentProvider;
       /** Needed to re-parse unsaved buffers so symbol lookups stay accurate. */
       parsers?: ParserRegistry;
+      /** Append only log of tool calls and their estimated naive baseline. */
+      usage?: UsageLedger;
     }
   ) {
     this.estimator = deps.estimator ?? defaultTokenEstimator;
@@ -121,6 +124,11 @@ export class WorkspaceIntelligence {
 
   get metrics(): Metrics {
     return this.deps.metrics;
+  }
+
+  /** Undefined when the caller did not wire a log (core tests, disabled logging). */
+  get usage(): UsageLedger | undefined {
+    return this.deps.usage;
   }
 
   getFreshness(): IndexFreshness {
@@ -620,6 +628,21 @@ export class WorkspaceIntelligence {
       }
       if (Object.keys(tools).length === 0) {
         lines.push('  (no bce tool was called yet)');
+      }
+      const usage = this.deps.usage;
+      if (usage) {
+        const totals = usage.totals();
+        lines.push('');
+        lines.push(
+          `estimated context avoided: ~${totals.savedTokens} token(s) across ${totals.callsWithBaseline} call(s) that have a naive baseline, ${usage.size} logged entr${
+            usage.size === 1 ? 'y' : 'ies'
+          }`
+        );
+        lines.push(
+          usage.isPersisted
+            ? `  saved in ${usage.file} inside BCE storage - run "BCE: Show Usage Report" to see it, "BCE: Reset Usage Log" to start over.`
+            : '  logging is turned off by setting bce.usageLog.enabled, only this session is counted.'
+        );
       }
       lines.push('');
       lines.push('note: token counts are local estimates, not the model provider billing numbers.');

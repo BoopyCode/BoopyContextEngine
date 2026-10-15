@@ -85,16 +85,20 @@ connection:
   index holds) is used again. Every such result is labelled `UNSAVED editor buffer`.
 
 You can inspect exactly what was sent: `BCE: Show Diagnostics` lists every tool call with the
-characters and estimated tokens returned, and the output channel logs each call at
-`bce.diagnostics.level: verbose`.
+characters and estimated tokens returned, `BCE: Show Usage Report` renders the persistent usage log
+(calls, queries, estimated tokens returned and estimated naive baseline), and the output channel
+logs each call at `bce.diagnostics.level: verbose`.
 
 ## 6. Storage and deletion
 
 * Default location is VS Code extension storage, i.e. outside your project.
 * Index, map and cache contain metadata and code snippets of indexed files. Treat the index
   directory like the source: it is not encrypted, so secure the machine/profile accordingly.
+* The usage log (`usage.jsonl`) records the queries and paths you asked the `bce_*` tools about plus
+  estimated token counts. It is local only, never uploaded, disabled with
+  `bce.usageLog.enabled: false` and deleted with `BCE: Reset Usage Log`.
 * Deleting it: close VS Code and remove the `bce-index` directory (or run `BCE: Clear Cache` for
-  the caches only, `BCE: Rebuild Index` to regenerate). See
+  the caches only, `BCE: Reset Usage Log` for the usage log, `BCE: Rebuild Index` to regenerate). See
   [INDEX-STORAGE.md](INDEX-STORAGE.md).
 * `bce.storage.location: "workspace"` writes to `<project>/.bce`. BCE then also ensures the
   managed `.gitignore` block exists, so it cannot be committed by accident.

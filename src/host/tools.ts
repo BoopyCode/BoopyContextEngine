@@ -3,6 +3,7 @@ import { BceLogger } from './ui';
 import { SessionManager, WorkspaceSession } from './session';
 import { WorkspaceIntelligence } from '../core/workspace';
 import { ToolPayload } from '../core/tools/handlers';
+import { estimateUsageSavings } from '../core/diagnostics/savings';
 import {
   runExplainImpact,
   runFileContext,
@@ -79,11 +80,29 @@ class BceTool<T> implements vscode.LanguageModelTool<T> {
       const payload = await this.definition.run(session.intelligence, validation.value);
       const durationMs = Date.now() - startedAt;
       session.metrics.recordToolCall(this.definition.name, payload.text.length, payload.estimatedTokens, durationMs);
+      const savings = estimateUsageSavings(session.intelligence, this.definition.name, validation.value);
+      session.usage?.record({
+        tool: this.definition.name,
+        label: savings.label,
+        returnedTokens: payload.estimatedTokens,
+        characters: payload.text.length,
+        baselineTokens: savings.baselineTokens,
+        baselineFiles: savings.baselineFiles,
+        candidateFiles: savings.candidateFiles,
+        durationMs
+      });
       this.logger.log('debug', `${this.definition.name}: ${payload.text.length} chars, ~${payload.estimatedTokens} tokens, ${durationMs} ms`);
       return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(payload.text)]);
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       session.metrics.recordToolCall(this.definition.name, 0, 0, durationMs, true);
+      session.usage?.record({
+        tool: this.definition.name,
+        returnedTokens: 0,
+        characters: 0,
+        durationMs,
+        error: true
+      });
       session.metrics.recordEvent('error', `${this.definition.name} failed: ${error instanceof Error ? error.message : String(error)}`);
       const message = error instanceof Error ? error.message : String(error);
       this.logger.log('warn', `${this.definition.name} failed: ${message}`);

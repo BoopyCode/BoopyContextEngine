@@ -12,6 +12,8 @@ export interface StoreFs {
   readText(relPath: string): Promise<string>;
   /** Writes content so that a reader never sees a partially written file. */
   writeTextAtomic(relPath: string, content: string): Promise<void>;
+  /** Appends without rewriting the file; used by the append only usage log. */
+  appendText(relPath: string, content: string): Promise<void>;
   exists(relPath: string): Promise<boolean>;
   remove(relPath: string): Promise<void>;
   mkdirp(relPath: string): Promise<void>;
@@ -47,6 +49,13 @@ export class NodeStoreFs implements StoreFs {
     } catch {
       return false;
     }
+  }
+
+  async appendText(relPath: string, content: string): Promise<void> {
+    const absolute = this.absolute(relPath);
+    const dir = dirOf(normalizeRel(relPath));
+    await fs.mkdir(dir === '' ? this.basePath : this.absolute(dir), { recursive: true });
+    await fs.appendFile(absolute, content, 'utf8');
   }
 
   async remove(relPath: string): Promise<void> {

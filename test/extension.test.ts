@@ -128,6 +128,55 @@ describe('extension activation', () => {
     expect(statusText).toContain('estimated tokens');
   });
 
+  it('logs what the tools returned and reports the estimated savings', async () => {
+    await activate(context as unknown as vscode.ExtensionContext);
+    await waitFor(async () => {
+      const status = await __mock.invokeTool('bce_get_status', {});
+      return (status as { content: { value: string }[] }).content[0].value.includes('complete: true');
+    });
+
+    await __mock.invokeTool('bce_find_context', { query: 'OrderService refund', maxTokens: 300, includeSnippets: false });
+    await __mock.invokeTool('bce_get_file_context', { path: 'src/services/orderService.ts', symbol: 'refund' });
+
+    // BCE keeps its files in <extension storage>/bce-index.
+    const logFile = path.join(storage.dir, 'bce-index', 'usage.jsonl');
+    await waitFor(async () =>
+      fs.access(logFile).then(
+        () => true,
+        () => false
+      )
+    );
+    const lines = (await fs.readFile(logFile, 'utf8')).trim().split('\n');
+    const entries = lines.map(
+      (line) => JSON.parse(line) as { tool: string; label?: string; returnedTokens: number; baselineTokens?: number }
+    );
+    // Earlier entries come from the status polling above, so the new calls are the last two.
+    const search = entries[entries.length - 2];
+    const file = entries[entries.length - 1];
+    expect(search.tool).toBe('bce_find_context');
+    expect(search.label).toBe('OrderService refund');
+    expect(search.returnedTokens).toBeGreaterThan(0);
+    expect(search.baselineTokens).toBeGreaterThan(0);
+    expect(file.tool).toBe('bce_get_file_context');
+    expect(file.label).toBe('src/services/orderService.ts#refund');
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+
+    const status = await __mock.invokeTool('bce_get_status', { verbose: true });
+    const statusText = (status as { content: { value: string }[] }).content[0].value;
+    expect(statusText).toContain('estimated context avoided');
+    expect(statusText).toContain('usage.jsonl');
+
+    const outputBefore = __mock.state.outputLines.length;
+    await vscode.commands.executeCommand('bce.showUsageReport');
+    const report = __mock.state.outputLines.slice(outputBefore).join('\n');
+    expect(report).toContain('# BCE usage log');
+    expect(report).toContain('bce_find_context');
+    expect(report).toContain('local estimates');
+
+    await vscode.commands.executeCommand('bce.resetUsageLog');
+    expect(__mock.state.messages.some((message) => message.includes('delete the usage log'))).toBe(true);
+  });
+
   it('stores the index outside the project and keeps the project clean', async () => {
     await activate(context as unknown as vscode.ExtensionContext);
     // The map is written file by file, so wait for the last one.

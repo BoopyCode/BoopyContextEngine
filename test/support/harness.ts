@@ -5,6 +5,7 @@ import { ProjectIndexer as Indexer, IndexerDeps } from '../../src/core/index/pro
 import { IgnoreEngine } from '../../src/core/ignore/ignoreEngine';
 import { ParserRegistry } from '../../src/core/parse/registry';
 import { Metrics } from '../../src/core/diagnostics/metrics';
+import { UsageLedger } from '../../src/core/diagnostics/usageLedger';
 import { ContextCache } from '../../src/core/cache/contextCache';
 import { WorkspaceIntelligence } from '../../src/core/workspace';
 import { defaultWorkspaceConfig, WorkspaceConfig, configSignature, maxFileSizeBytes } from '../../src/core/config';
@@ -44,6 +45,7 @@ export interface Harness {
   contextCache: ContextCache<unknown>;
   config: WorkspaceConfig;
   logs: string[];
+  usage: UsageLedger;
   work(): Promise<void>;
   reloadIgnore(): void;
 }
@@ -91,6 +93,15 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const indexer = new Indexer(deps);
   const git = options.gitRunner ? new GitClient(options.gitRunner, temp.dir) : undefined;
+  const usageStore = options.store ?? memoryStore ?? new NodeStoreFs(storage.dir);
+  const usage = await UsageLedger.load({
+    store: usageStore,
+    rootName: 'fixture',
+    enabled: () => config.usageLog,
+    log: (level: 'debug' | 'info' | 'warn', message: string) => {
+      logs.push(`${level}: ${message}`);
+    }
+  });
   const intelligence = new WorkspaceIntelligence({
     rootName: 'fixture',
     rootDisplayPath: temp.dir,
@@ -102,7 +113,8 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     config,
     git,
     documents: options.documents,
-    parsers
+    parsers,
+    usage
   });
 
   return {
@@ -121,6 +133,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     contextCache,
     config,
     logs,
+    usage,
     work: async (): Promise<void> => {
       await indexer.initialize({ fullScan: true });
       // Generous: the suite also runs on busy machines where a scan of the fixture can

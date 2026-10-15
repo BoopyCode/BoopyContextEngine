@@ -7,6 +7,7 @@ import { IndexStore } from '../core/index/indexStore';
 import { IgnoreEngine } from '../core/ignore/ignoreEngine';
 import { ParserRegistry } from '../core/parse/registry';
 import { Metrics } from '../core/diagnostics/metrics';
+import { UsageLedger } from '../core/diagnostics/usageLedger';
 import { ContextCache } from '../core/cache/contextCache';
 import { GitClient } from '../core/vcs/git';
 import { ProjectIndexer } from '../core/index/projectIndexer';
@@ -24,6 +25,7 @@ export class WorkspaceSession implements vscode.Disposable {
   readonly fs: NodeFileSystem;
   readonly store: IndexStore;
   readonly metrics: Metrics;
+  readonly usage: UsageLedger;
   readonly contextCache: ContextCache<unknown>;
   readonly indexer: ProjectIndexer;
   readonly intelligence: WorkspaceIntelligence;
@@ -46,7 +48,8 @@ export class WorkspaceSession implements vscode.Disposable {
     private readonly logger: BceLogger,
     private readonly statusBar: BceStatusBar,
     storageUri: vscode.Uri,
-    storageInsideProject: boolean
+    storageInsideProject: boolean,
+    usage: UsageLedger
   ) {
     this.folder = folder;
     this.config = config;
@@ -57,6 +60,7 @@ export class WorkspaceSession implements vscode.Disposable {
     this.fs = new NodeFileSystem(folder.uri.fsPath);
     this.store = new IndexStore(new NodeStoreFs(storageUri.fsPath));
     this.metrics = new Metrics();
+    this.usage = usage;
     this.contextCache = new ContextCache<unknown>();
     this.ignoreEngine = this.createIgnoreEngine();
     this.git = new GitClient(new ChildProcessRunner(), folder.uri.fsPath);
@@ -90,7 +94,8 @@ export class WorkspaceSession implements vscode.Disposable {
       config: this.config,
       git: this.git,
       documents: new VsCodeDocumentProvider(folder),
-      parsers: this.parsers
+      parsers: this.parsers,
+      usage: this.usage
     });
 
     this.disposables.push(
@@ -112,7 +117,13 @@ export class WorkspaceSession implements vscode.Disposable {
   ): Promise<WorkspaceSession> {
     const config = readWorkspaceConfig(folder);
     const { uri, insideProject } = await resolveStorageUri(folder, extensionContext, config);
-    const session = new WorkspaceSession(folder, config, extensionContext, logger, statusBar, uri, insideProject);
+    const usage = await UsageLedger.load({
+      store: new NodeStoreFs(uri.fsPath),
+      rootName: folder.name,
+      enabled: () => readWorkspaceConfig(folder).usageLog,
+      log: (level, message) => logger.log(level, `[${folder.name}] ${message}`)
+    });
+    const session = new WorkspaceSession(folder, config, extensionContext, logger, statusBar, uri, insideProject, usage);
     return session;
   }
 

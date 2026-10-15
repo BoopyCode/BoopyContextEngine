@@ -20,6 +20,7 @@ export function readWorkspaceConfig(folder?: vscode.WorkspaceFolder): WorkspaceC
     maxSearchResults: cfg.get<number>('search.maxResults', defaultWorkspaceConfig.maxSearchResults),
     snippetLines: cfg.get<number>('search.snippetLines', defaultWorkspaceConfig.snippetLines),
     recencyDays: cfg.get<number>('git.recencyDays', defaultWorkspaceConfig.recencyDays),
+    usageLog: cfg.get<boolean>('usageLog.enabled', defaultWorkspaceConfig.usageLog),
     tools: {
       projectOverview: cfg.get<boolean>('tools.projectOverview.enabled', true),
       findContext: cfg.get<boolean>('tools.findContext.enabled', true),
