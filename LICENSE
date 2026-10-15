@@ -1,6 +1,9 @@
-MIT License
-
+MIT License with Commons Clause
 Copyright (c) 2026 BoopyCode
+
+================================================================================
+Part 1 - MIT License
+================================================================================
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +22,96 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================================
+Part 2 - Commons Clause (Commercial Use Restriction)
+================================================================================
+
+The rights granted to you in Part 1 are granted subject to the following
+additional condition ("Commons Clause"). This Commons Clause is a condition of
+the license, not a license itself. If any provision of this Commons Clause
+conflicts with Part 1, this Commons Clause controls.
+
+1. Commercial Use is not licensed.
+
+   Notwithstanding anything to the contrary in Part 1, you do NOT have the right
+   to use, reproduce, modify, adapt, translate, distribute, sublicense, sell,
+   rent, lease, host, deploy, or otherwise make available the Software, or any
+   derivative work of the Software, in whole or in part, for any Commercial
+   Purpose, unless you have been granted a separate, valid, written commercial
+   license by the copyright holder (BoopyCode).
+
+2. "Commercial Purpose" means any use that is intended for or directed toward
+   commercial advantage or monetary compensation, or that is made by or for a
+   business, company, government body or other organization in the operation of
+   its business or the delivery of its products or services. This includes,
+   without limitation:
+
+   a) selling, reselling, licensing, sublicensing, renting or leasing the
+      Software, or any derivative work of it;
+   b) distributing the Software, or any derivative work of it, for a fee or
+      other consideration;
+   c) offering the Software, or a product or service whose value derives
+      entirely or substantially from the functionality of the Software, as a
+      paid, hosted, managed, bundled or subscription service, including
+      consulting, integration, or support work whose charge is based on the
+      Software;
+   d) using the Software to build, operate or improve a product, platform or
+      service that is sold, licensed, or monetized in any way, directly or
+      indirectly;
+   e) using the Software to provide, in exchange for payment, the same or
+      similar functionality as the Software to third parties;
+   f) any use whose primary aim is to earn money, revenue, or commercial gain,
+      whether directly or indirectly, including through the packaging or
+      redistribution of the Software inside another commercial offering.
+
+3. What remains permitted without a separate commercial license:
+
+   a) private, personal, non-commercial use;
+   b) use for learning, teaching, study, research, experimentation, hobby
+      projects and portfolio work, provided no fee is charged and no commercial
+      advantage is pursued;
+   c) open source, non-commercial projects distributed free of charge under a
+      license that imposes these same restrictions on every downstream user;
+   d) short-term evaluation, testing and proof-of-concept work inside a company,
+      strictly limited to deciding whether to obtain a commercial license, and
+      only if the Software is not used in production, is not shipped to any
+      customer, and produces no commercial result.
+
+4. Any commercial use requires our license.
+
+   If you or your organization want to use the Software for any Commercial
+   Purpose, you must first obtain a separate written commercial license from
+   BoopyCode. Commercial terms, pricing and scope are agreed individually.
+   Contact: https://boopycode.com
+
+5. Attribution and notice.
+
+   Every copy, derivative work and distribution of the Software must include the
+   full text of this license, including this Commons Clause, unmodified. You may
+   not remove, hide, rename, or weaken the copyright notice, the license notice,
+   or this Commons Clause in any copy or derivative work.
+
+6. Termination.
+
+   Any use of the Software in violation of this Commons Clause automatically
+   terminates, immediately and without notice, all rights granted to you under
+   Part 1. Upon termination you must stop using the Software and destroy all
+   copies in your possession or control.
+
+7. No implied waiver.
+
+   Failure or delay by the copyright holder in enforcing this Commons Clause is
+   not a waiver of any right and does not authorize any further or continued
+   violation.
+
+8. Independence of Parts.
+
+   If this Commons Clause is held unenforceable or invalid in whole or in part,
+   the license granted in Part 1 does not apply to you either; in that case you
+   have no license to the Software and must stop all use of it.
+
+================================================================================
+
+Boopy Context Engine (BCE)
+Licensor / copyright holder: BoopyCode - https://boopycode.com

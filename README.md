@@ -365,4 +365,26 @@ Known limitations, stated plainly:
 | [docs/BENCHMARK.md](docs/BENCHMARK.md) | How to reproduce the benchmark, what it does and does not prove |
 | [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | Using BCE to write documentation and to generate tests, preventing duplicate retrieval, with prompts |
 
-MIT licensed. Built by BoopyCode - [boopycode.com](https://boopycode.com).
+---
+
+## 13. Licence
+
+MIT Licence with **Commons Clause** - see [LICENSE](LICENSE).
+
+In short:
+
+* Free for personal, non-commercial, educational and open source (non-commercial) use, and for
+  short-term evaluation inside a company.
+* **Commercial use is not granted by this licence.** Using BCE, anything derived from it, or a
+  product or service built on it, for a commercial purpose, in a business, or to earn money -
+  directly or indirectly - requires a separate written commercial licence from BoopyCode. You may
+  not use it commercially on your own initiative, and you may not make money from it.
+* The copyright notice and the full licence text, including the Commons Clause, must stay in every
+  copy and derivative work.
+
+Interested in a commercial licence? Contact us at [boopycode.com](https://boopycode.com).
+
+> Note: because of the Commons Clause this is a *source-available* licence, not an OSI-approved
+> open source licence.
+
+Built by BoopyCode - [boopycode.com](https://boopycode.com).

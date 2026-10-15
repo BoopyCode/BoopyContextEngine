@@ -2,6 +2,15 @@
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 
+## [Unreleased]
+
+### Changed
+
+* **Licence changed from MIT to MIT + Commons Clause** (`LICENSE`). Personal, non-commercial,
+  educational, non-commercial open source and short-term evaluation use stay free; every commercial
+  use now requires a separate written commercial licence from BoopyCode. `package.json` declares
+  `"license": "SEE LICENSE IN LICENSE"`, and README section 13 documents what is and is not allowed.
+
 ## [0.1.4] - 2026-10-15
 
 Answering "how much did BCE actually save?" with data instead of a promise.
