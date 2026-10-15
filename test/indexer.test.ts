@@ -124,6 +124,7 @@ describe('project indexing', () => {
 
     const otherRoot = await harness({ store });
     await otherRoot.indexer.initialize();
+    await otherRoot.indexer.waitForIdle(120_000);
     expect(otherRoot.logs.some((line) => line.includes('different workspace') || line.includes('no index found'))).toBe(true);
     expect(otherRoot.indexer.getIndex().rootKey).not.toBe(h.indexer.getIndex().rootKey);
     expect(otherRoot.indexer.getIndex().size).toBeGreaterThan(10);
@@ -133,6 +134,7 @@ describe('project indexing', () => {
     store.set('index.json', JSON.stringify(persisted));
     const third = await harness({ store, root: otherRoot.root });
     await third.indexer.initialize();
+    await third.indexer.waitForIdle(120_000);
     expect(third.logs.some((line) => line.includes('parsers changed'))).toBe(true);
     expect(third.indexer.getIndex().size).toBeGreaterThan(10);
   });

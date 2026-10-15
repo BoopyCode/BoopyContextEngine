@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { GITIGNORE_MARKER_START, ensureBceGitIgnored } from '../src/host/gitignore';
+import { GITIGNORE_MARKER_END, GITIGNORE_MARKER_START, ensureBceGitIgnored } from '../src/host/gitignore';
 import { createTempDir } from './support/tempProject';
 import { __mock } from './mocks/vscode';
 
@@ -50,6 +50,20 @@ describe('automatic git ignore of BCE output', () => {
     const second = await ensureBceGitIgnored(vscode.Uri.file(root), { trusted: true, enabled: true, writesIntoProject: false });
     expect(second).toBe('already-present');
     expect(await readGitignore()).toBe(first);
+  });
+
+  it('keeps a CRLF file byte identical when the managed block is already correct', async () => {
+    const original = `node_modules/\r\n\r\n${GITIGNORE_MARKER_START}\r\n.bce/\r\n.bce-cache/\r\n${GITIGNORE_MARKER_END}\r\n\r\n# local notes\r\ncopilot-instructions.md\r\n`;
+    await fs.writeFile(path.join(root, '.gitignore'), original, 'utf8');
+
+    const first = await ensureBceGitIgnored(vscode.Uri.file(root), { trusted: true, enabled: true, writesIntoProject: false });
+    const afterFirst = await readGitignore();
+    const second = await ensureBceGitIgnored(vscode.Uri.file(root), { trusted: true, enabled: true, writesIntoProject: false });
+
+    expect(afterFirst).toBe(original);
+    expect(first).toBe('already-present');
+    expect(second).toBe('already-present');
+    expect(await readGitignore()).toBe(original);
   });
 
   it('preserves existing content and appends the block', async () => {

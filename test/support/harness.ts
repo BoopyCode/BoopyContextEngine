@@ -123,7 +123,9 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     logs,
     work: async (): Promise<void> => {
       await indexer.initialize({ fullScan: true });
-      await indexer.waitForIdle();
+      // Generous: the suite also runs on busy machines where a scan of the fixture can
+      // take far longer than its normal few hundred milliseconds.
+      await indexer.waitForIdle(120_000);
     },
     reloadIgnore(): void {
       ignoreEngine = createIgnore(config);

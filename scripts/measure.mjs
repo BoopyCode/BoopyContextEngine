@@ -87,7 +87,11 @@ async function main() {
     return;
   }
 
-  const benchmarkTasks = JSON.parse(await fs.readFile(path.join(project, '.bce-benchmark.json'), 'utf8')).tasks;
+  const tasksFile = path.join(project, '.bce-benchmark.json');
+  const declaredTasks = await fs
+    .readFile(tasksFile, 'utf8')
+    .then((text) => JSON.parse(text).tasks ?? [])
+    .catch(() => []);
 
   // 2. build the vscode stand-in and let the bundle resolve 'vscode' to it
   const stubDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bce-measure-stub-'));
@@ -132,21 +136,24 @@ async function main() {
     const readyAt = performance.now();
     const memoryIndexed = process.memoryUsage();
 
+    // The extension's own benchmark first: it either reads <project>/.bce-benchmark.json or
+    // derives tasks from the indexed project, which is what makes any repository measurable.
+    const outputBefore = __mock.state.outputLines.length;
+    await vscode.commands.executeCommand('bce.runBenchmark');
+    const results = parseBenchmarkReport(__mock.state.outputLines.slice(outputBefore).join('\n'));
+    const queries = results.tasks.length > 0 ? results.tasks.map((task) => task.query) : declaredTasks.map((task) => task.query);
+
     const latency = [];
     for (let pass = 0; pass < searchRounds; pass += 1) {
-      for (const task of benchmarkTasks) {
+      for (const query of queries) {
         const started = performance.now();
-        await __mock.invokeTool('bce_find_context', { query: task.query });
+        await __mock.invokeTool('bce_find_context', { query });
         latency.push(performance.now() - started);
       }
     }
     const memoryAfterSearch = process.memoryUsage();
     const firstCallMs = round(latency[0]);
     const sorted = [...latency].sort((a, b) => a - b);
-
-    const outputBefore = __mock.state.outputLines.length;
-    await vscode.commands.executeCommand('bce.runBenchmark');
-    const results = parseBenchmarkReport(__mock.state.outputLines.slice(outputBefore).join('\n'));
 
     await fs.rm(storage, { recursive: true, force: true });
     extension.deactivate();

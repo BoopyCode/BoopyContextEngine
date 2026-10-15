@@ -2,6 +2,24 @@
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+* **Switching CRLF projects no longer rewrites their `.gitignore`.** `replaceManagedBlock`
+  matched only `\n` when trimming the text after the managed block and always wrote the block with
+  `LF`, so on a Windows checkout every run added another blank line and mixed the line endings.
+  The writer now detects the file's line ending and keeps the block byte identical; verified on
+  this repository (running BCE on it leaves `git status` clean) and covered by a CRLF regression
+  test in `test/gitignore.test.ts`.
+
+### Changed
+
+* `scripts/measure.mjs` measures any project, not only the generated one: the benchmark command
+  runs first and its tasks (from `<project>/.bce-benchmark.json` or derived from the project's own
+  map) are reused for the latency loop.
+* README install section starts with the release VSIX.
+
 ## [0.1.3] - 2026-10-15
 
 Lifecycle hardening found while chasing leaked temporary directories in the test suite, plus

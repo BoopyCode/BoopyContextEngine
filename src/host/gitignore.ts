@@ -52,14 +52,20 @@ export async function ensureBceGitIgnored(root: vscode.Uri, options: GitIgnoreOp
   }
 
   const missing = BCE_PROJECT_PATHS.filter((entry) => !hasPlainEntry(content, entry));
-  const block = buildManagedBlock(missing);
-  const prefix = content.length === 0 ? '' : content.endsWith('\n') ? '\n' : '\n\n';
+  const eol = detectEol(content);
+  const block = buildManagedBlock(missing, eol);
+  const prefix = content.length === 0 ? '' : content.endsWith('\n') ? eol : `${eol}${eol}`;
   const written = await write(gitignoreUri, `${content}${prefix}${block}`);
   return written ? (existing === undefined ? 'created' : 'updated') : 'failed';
 }
 
-function buildManagedBlock(entries: string[]): string {
-  return [`${GITIGNORE_MARKER_START}`, ...entries, `${GITIGNORE_MARKER_END}`, ''].join('\n');
+function buildManagedBlock(entries: string[], eol = '\n'): string {
+  return [`${GITIGNORE_MARKER_START}`, ...entries, `${GITIGNORE_MARKER_END}`, ''].join(eol);
+}
+
+/** A CRLF project must not get an LF block: that would rewrite the file on every run. */
+function detectEol(content: string): string {
+  return content.includes('\r\n') ? '\r\n' : '\n';
 }
 
 function replaceManagedBlock(content: string): string {
@@ -68,10 +74,12 @@ function replaceManagedBlock(content: string): string {
   if (start === -1 || end === -1 || end < start) {
     return content;
   }
+  const eol = detectEol(content);
   const before = content.slice(0, start);
-  const after = content.slice(end + GITIGNORE_MARKER_END.length).replace(/^\n+/, '');
-  const block = buildManagedBlock(BCE_PROJECT_PATHS);
-  return `${before}${block}${after}`;
+  // Newlines are matched with \r as well, otherwise the gap grows by one blank line per run.
+  const after = content.slice(end + GITIGNORE_MARKER_END.length).replace(/^[\r\n]+/, '');
+  const block = buildManagedBlock(BCE_PROJECT_PATHS, eol);
+  return `${before}${block}${after.length > 0 ? `${eol}${after}` : ''}`;
 }
 
 function hasPlainEntry(content: string, entry: string): boolean {
