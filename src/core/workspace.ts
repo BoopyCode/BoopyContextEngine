@@ -772,11 +772,27 @@ export class WorkspaceIntelligence {
       if (usage) {
         const totals = usage.totals();
         lines.push('');
+        // Quote the range, not one number. `savedTokens` is the *upper bound* of a
+        // naive baseline that reads every file whose path or symbol names match a
+        // query term - a single big number next to the word "avoided" reads as a
+        // measurement, which it is not. The low end is the cheapest plausible read.
+        const range = totals.baselineTokensLowerBound !== totals.baselineTokens
+          ? `~${totals.savedTokensLowerBound} to ~${totals.savedTokens}`
+          : `up to ~${totals.savedTokens}`;
         lines.push(
-          `estimated context avoided: ~${totals.savedTokens} token(s) across ${totals.callsWithBaseline} call(s) that have a naive baseline, ${usage.size} logged entr${
+          `estimated context avoided: ${range} token(s) across ${totals.callsWithBaseline} call(s) with a naive baseline (naive upper bound, not a measurement), ${usage.size} logged entr${
             usage.size === 1 ? 'y' : 'ies'
           }`
         );
+        // A saving only means something next to what the calls actually answered.
+        const quality = usage.summary().quality;
+        if (quality && (quality.empty > 0 || quality.productive > 0)) {
+          lines.push(
+            `  of ${quality.empty + quality.productive} find_context call(s) with a recorded outcome: ${quality.productive} productive, ${quality.empty} empty${
+              quality.truncated > 0 ? `, ${quality.truncated} cut short by the budget` : ''
+            } - token savings are not a quality signal`
+          );
+        }
         lines.push(
           usage.isPersisted
             ? `  saved in ${usage.file} inside BCE storage - run "BCE: Show Usage Report" to see it, "BCE: Reset Usage Log" to start over.`

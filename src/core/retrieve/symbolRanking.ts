@@ -36,6 +36,31 @@ export const SYMBOL_KIND_BONUS = 3;
 export const TERM_FILE_AFFINITY = 5;
 
 /**
+ * Weight multiplier for the Nth matched symbol in the same file.
+ *
+ * The first few matches in a file are strong evidence that the file is *about*
+ * the query. Beyond that the evidence repeats itself: a 270-route `index.php`
+ * matches almost any word, and summing full weight for all 270 matches let it
+ * outrank the single service the query named. Each extra match is therefore
+ * worth progressively less, so relevance (a strong match) beats volume (many
+ * weak ones).
+ *
+ * The first three matches keep full weight, because several strong symbols in
+ * one file (a class plus its methods) is exactly what a good hit looks like.
+ */
+const SYMBOL_MATCH_DECAY_START = 3;
+const SYMBOL_MATCH_DECAY_FACTOR = 0.35;
+const SYMBOL_MATCH_DECAY_FLOOR = 0.1;
+
+export function symbolMatchDecay(matchesSoFar: number): number {
+  if (matchesSoFar < SYMBOL_MATCH_DECAY_START) {
+    return 1;
+  }
+  const excess = matchesSoFar - SYMBOL_MATCH_DECAY_START + 1;
+  return Math.max(SYMBOL_MATCH_DECAY_FLOOR, Math.pow(SYMBOL_MATCH_DECAY_FACTOR, excess));
+}
+
+/**
  * Words that carry no target meaning on their own. They are still useful as
  * *hints* ("route", "test"), so they are dropped from name matching instead of
  * being removed from the query.

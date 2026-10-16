@@ -1,4 +1,49 @@
 # Changelog
+## [0.1.10] - 2026-10-16
+
+Ranking that cannot be bought by volume, a phase-one list that is actually cheap, and one fewer
+place where a saving can be misread as a measurement. Measured on a real 363-file repository where
+the previous release returned a 16 KB answer that had to be spilled to a file.
+
+### Fixed
+
+* **A file with many symbols could win a query by volume alone.** `backend/public/index.php` holds
+  270 of the index's 3969 symbols, so almost any word matched something in it and the per-symbol
+  scores were summed without limit - the route table scored 554 and took first place, while the file
+  the query actually named (`AuditLogService`) sat at position 19. Extra matches in the same file now
+  carry **diminishing weight** (the first three keep full weight, then ×0.35 per match down to a 0.1
+  floor), so relevance beats sheer count. On the measured queries the named service moved
+  **#19 → #4** and the route table fell out of first place.
+* **Long natural-language queries were dominated by their most common words.** Every term now carries
+  a **rarity weight** (a term in ≥50% of files is worth 1, in <5% is worth 3.4), computed in one pass
+  over the index. "service" and "user" no longer drown out "audit" and "refund".
+* **A file matching several query words was not rewarded for breadth.** A file that answers *audit*
+  and *log* is a better target than one that answers only the frequent *service*, which a sum of
+  per-term scores cannot express. Matching two or more terms now adds a capped coverage bonus - and
+  only **name-level** matches count towards it, so a route table cannot buy breadth through words
+  buried in other people's signatures.
+* **`symbolsOnly` answers were as large as full context bundles.** `renderBundle` re-rendered every
+  item with the verbose `renderItem`, so the "cheap phase-one list" still printed `why:` and
+  `symbols:` blocks - 48 hits, 16 KB, written to a temp file instead of read. The bundle now carries
+  its **mode**, the phase-one list renders one compact line per hit, is capped at 24 items, and reads
+  no file bodies at all. Same measured queries: **16.1 KB → 5.0 KB (−69%)**, and the answer is in the
+  top few instead of buried.
+* **`bce_get_status` quoted the naive upper bound as a single number.** It printed
+  `estimated context avoided: ~1878965 token(s)`, which reads as a measurement of work avoided -
+  while the detailed report already prints a range and labels the high end an upper bound. The status
+  line now quotes the same range (`~low to ~high`), says **naive upper bound, not a measurement**, and
+  prints the productive/empty call counts next to it so a saving cannot be read without the quality
+  context.
+
+### Tests
+
+* `test/ranking.test.ts` covers the decay curve, that a named file beats a word-matching file, that a
+  rare term outweighs a common one, that the phase-one list stays short and cheap, and that it renders
+  without `why:`/`code:` blocks.
+* `test/usage.test.ts` pins the honest status wording: the range, the "not a measurement" label and
+  the productive/empty pairing.
+* 198 tests pass; `npm run typecheck` is clean.
+
 ## [0.1.9] - 2026-10-16
 
 Ranking, honest numbers, coverage and a two-phase lookup. Each change comes from a measured

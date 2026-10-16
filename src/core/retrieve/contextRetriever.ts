@@ -10,7 +10,7 @@ import { baseName, dirOf, isInside, splitIdentifier } from '../util/paths';
 import { defaultTokenEstimator, TokenBudget, TokenEstimator } from '../util/tokens';
 import { ProjectIndex } from '../index/indexModel';
 import { LineRange, renderSnippet } from './snippets';
-import { fileTermsOf, matchSymbolTerm, nameTerms, SYMBOL_KIND_BONUS, SymbolMatchKind, TERM_FILE_AFFINITY } from './symbolRanking';
+import { fileTermsOf, matchSymbolTerm, nameTerms, SYMBOL_KIND_BONUS, SymbolMatchKind, TERM_FILE_AFFINITY, symbolMatchDecay } from './symbolRanking';
 
 export interface RetrieveOptions {
   query: string;
@@ -71,6 +71,13 @@ export interface ContextBundle {
   warnings: string[];
   estimatorMethod: string;
   durationMs: number;
+  /**
+   * Rendering mode the bundle was assembled in. `renderBundle` must use the same
+   * one, otherwise the token estimate (computed with the compact renderer) and
+   * the printed text (verbose) disagree, and a phase-one list comes out as a
+   * full context bundle.
+   */
+  mode: 'snippets' | 'index';
 }
 
 export interface RetrieverDeps {
@@ -142,6 +149,40 @@ const RECENCY_TERMS = new Set(['recent', 'recently', 'changed', 'change', 'lates
 const ENTRY_TERMS = new Set(['entry', 'main', 'start', 'bootstrap', 'boot', 'cli', 'server']);
 const TEST_TERMS = new Set(['test', 'tests', 'spec', 'specs', 'unit', 'coverage']);
 
+/** A query term together with how much a match on it is worth (rarer = more). */
+interface WeightedTerm {
+  term: string;
+  weight: number;
+}
+
+/** Points added per distinct query term a file matches, beyond the first. */
+const COVERAGE_BONUS = 4;
+
+/**
+ * Rarity weight for a term that appears in `frequency` of `total` files.
+ *
+ * A term in every file says nothing; a term in a few files says a lot. The
+ * curve is deliberately gentle (a 1..4 range) because the per-term weights
+ * multiply the existing scoring constants, and a violent weight would let one
+ * rare word override every other signal.
+ */
+function idfWeight(frequency: number, total: number): number {
+  if (total <= 0 || frequency <= 0) {
+    return 1;
+  }
+  const ratio = frequency / total;
+  if (ratio >= 0.5) {
+    return 1;
+  }
+  if (ratio >= 0.2) {
+    return 1.6;
+  }
+  if (ratio >= 0.05) {
+    return 2.4;
+  }
+  return 3.4;
+}
+
 /**
  * Ranks indexed files and symbols for a query, then assembles a token bounded
  * context bundle. Everything is local; no network calls are involved.
@@ -175,7 +216,8 @@ export class ContextRetriever {
         dirtyCount: 0,
         warnings: ['The query contained no usable search terms.'],
         estimatorMethod: this.estimator.method,
-        durationMs: this.clock.now() - startedAt
+        durationMs: this.clock.now() - startedAt,
+        mode: options.symbolsOnly ? 'index' : 'snippets'
       };
     }
 
@@ -187,6 +229,12 @@ export class ContextRetriever {
     const wantsEntry = terms.some((term) => ENTRY_TERMS.has(term));
     const wantsTests = terms.some((term) => TEST_TERMS.has(term));
 
+    // How many files each term appears in. A term in two files is evidence; the
+    // same term in fifty is background noise. Without this, "service" and
+    // "user" drown out "audit" and "refund" in a long natural-language query.
+    const termWeights = this.termWeights(terms, scopePrefix, options.includeTests);
+    const weightedTerms = terms.map((term) => ({ term, weight: termWeights.get(term) ?? 1 }));
+
     const scored: ScoredFile[] = [];
     let candidates = 0;
     for (const file of this.index.allFiles()) {
@@ -197,7 +245,7 @@ export class ContextRetriever {
         continue;
       }
       candidates += 1;
-      const result = this.scoreFile(file, terms, { recent, wantsRecent, entries, wantsEntry, wantsTests });
+      const result = this.scoreFile(file, weightedTerms, { recent, wantsRecent, entries, wantsEntry, wantsTests });
       if (result && result.score > 0) {
         scored.push(result);
       }
@@ -207,25 +255,33 @@ export class ContextRetriever {
     scored.sort((a, b) => b.score - a.score || a.file.path.localeCompare(b.file.path));
 
     const shortlisted = scored.slice(0, Math.max(options.maxResults, 1));
-    const items: ContextItem[] = [];
-    for (const candidate of shortlisted) {
-      items.push(await this.toContextItem(candidate, options));
-    }
 
-    // Index-only mode ranks many more targets than the snippet mode could afford,
-    // because a `path:line` line costs a fraction of a code block.
-    const ranked = options.symbolsOnly ? scored.slice(0, Math.max(options.maxResults * 4, 12)) : shortlisted;
-    const finalItems: ContextItem[] = options.symbolsOnly && ranked.length > shortlisted.length
+    // Index-only mode ranks more targets than the snippet mode could afford,
+    // because a `path:line` line costs a fraction of a code block. It is still a
+    // shortlist, not an inventory: an agent picks from the top handful, and a
+    // 48-item list only buries the answer and blows the budget.
+    //
+    // In this mode no file body is read at all: building the snippet items first
+    // and discarding them would pay for disk reads the answer never uses.
+    const rankedLimit = Math.min(Math.max(options.maxResults * 2, 12), 24);
+    const ranked = scored.slice(0, Math.max(rankedLimit, Math.max(options.maxResults, 1)));
+    const finalItems: ContextItem[] = options.symbolsOnly
       ? ranked.map((candidate) => this.toIndexItem(candidate))
-      : items;
+      : await this.buildSnippetItems(shortlisted, options);
 
+    const render = options.symbolsOnly ? renderIndexItem : renderItem;
     const budget = new TokenBudget(options.maxTokens, this.estimator);
     const kept: ContextItem[] = [];
     for (const item of finalItems) {
-      const rendered = renderItem(item, kept.length + 1);
+      const rendered = render(item, kept.length + 1);
       if (!budget.tryAdd(`${rendered}\n`)) {
+        // Index items carry no snippet, so there is nothing cheaper to fall back
+        // to: the item simply does not fit and neither will the ones after it.
+        if (options.symbolsOnly) {
+          break;
+        }
         item.snippet = undefined;
-        const withoutSnippet = renderItem(item, kept.length + 1);
+        const withoutSnippet = render(item, kept.length + 1);
         if (!budget.tryAdd(`${withoutSnippet}\n`)) {
           break;
         }
@@ -269,18 +325,27 @@ export class ContextRetriever {
       dirtyCount,
       warnings,
       estimatorMethod: this.estimator.method,
-      durationMs: this.clock.now() - startedAt
+      durationMs: this.clock.now() - startedAt,
+      mode: options.symbolsOnly ? 'index' : 'snippets'
     };
   }
 
   private scoreFile(
     file: FileRecord,
-    terms: string[],
+    weightedTerms: WeightedTerm[],
     context: { recent: Set<string>; wantsRecent: boolean; entries: Set<string>; wantsEntry: boolean; wantsTests: boolean }
   ): ScoredFile | undefined {
     const reasons: string[] = [];
     const matchedSymbols: SymbolRecord[] = [];
+    let symbolMatchesInFile = 0;
     let score = 0;
+    // Distinct query terms this file actually matches. Two specific terms in one
+    // file is a stronger signal than one specific term, which a pure sum of
+    // per-term scores cannot express.
+    let coveredTerms = 0;
+    const terms = weightedTerms.map((entry) => entry.term);
+    const weightOf = new Map(weightedTerms.map((entry) => [entry.term, entry.weight] as const));
+    const weight = (term: string): number => weightOf.get(term) ?? 1;
     const lowerPath = file.path.toLowerCase();
     const fileName = baseName(file.path).toLowerCase();
     const pathTerms = new Set(splitIdentifier(file.path));
@@ -289,17 +354,19 @@ export class ContextRetriever {
 
     for (const term of terms) {
       if (fileName === term) {
-        score += 14;
+        score += 14 * weight(term);
+        coveredTerms += 1;
         reasons.push(`file name is exactly "${term}"`);
         continue;
       }
       if (pathTerms.has(term)) {
-        score += 6;
+        score += 6 * weight(term);
+        coveredTerms += 1;
         reasons.push(`path contains "${term}"`);
         continue;
       }
       if (lowerPath.includes(term) && term.length >= 3) {
-        score += 3;
+        score += 3 * weight(term);
         reasons.push(`path matches "${term}"`);
       }
     }
@@ -312,11 +379,25 @@ export class ContextRetriever {
         }
         // One symbol keeps only its best match: scoring every term separately would
         // let a long query pile up points on a single coincidental name.
-        score += match.weight;
+        //
+        // Extra matched symbols count with diminishing returns. Without this, a
+        // route table with 270 declarations outranks the one service the query
+        // names, purely because more of its symbols happen to contain a word -
+        // the file that "contains" a term should not beat the file that *is*
+        // about it.
+        score += match.weight * weight(term) * symbolMatchDecay(symbolMatchesInFile);
+        symbolMatchesInFile += 1;
+        // Only a name-level match counts towards term coverage. A signature or
+        // doc mention is a hint about the file, not evidence that the file *is*
+        // about the term, and a 270-route table mentions almost every word in
+        // somebody's signature.
+        if (match.kind === 'exact-name' || match.kind === 'segment-name' || match.kind === 'qualified-name' || match.kind === 'prefix-name') {
+          coveredTerms += 1;
+        }
         // A symbol named after the file it lives in is what the query is usually
         // after: `adminAuth` among 27 `*admin*` routes should win.
         if (fileTerms.has(term)) {
-          score += TERM_FILE_AFFINITY;
+          score += TERM_FILE_AFFINITY * weight(term);
           reasons.push(`symbol ${symbol.name} (${symbol.kind}) is named after its own file`);
         } else {
           reasons.push(`symbol ${symbol.name} (${symbol.kind}) ${describeMatch(match.kind)} "${term}"`);
@@ -326,7 +407,7 @@ export class ContextRetriever {
       }
       for (const term of terms) {
         if (term.length >= 4 && `${symbol.doc ?? ''}`.toLowerCase().includes(term)) {
-          score += 1;
+          score += 1 * weight(term);
           break;
         }
       }
@@ -336,7 +417,7 @@ export class ContextRetriever {
       const specifier = importRecord.specifier.toLowerCase();
       for (const term of terms) {
         if (term.length >= 4 && specifier.includes(term)) {
-          score += 2.5;
+          score += 2.5 * weight(term);
           reasons.push(`imports "${importRecord.specifier}"`);
           break;
         }
@@ -386,10 +467,70 @@ export class ContextRetriever {
       reasons.push('last parse attempt failed for this file');
     }
 
+    // Breadth on top of depth: a file that answers several of the query's words
+    // (audit + log) is more likely the target than one that answers a single
+    // frequent word well (service). Only *strong* matches count towards breadth -
+    // a route table that merely mentions many words in its signatures must not
+    // buy coverage this way, or breadth becomes the same volume problem again.
+    // Capped so a file cannot climb on coverage alone.
+    if (coveredTerms >= 2) {
+      score += Math.min(coveredTerms, 5) * COVERAGE_BONUS;
+      reasons.push(`matches ${coveredTerms} of the query's terms`);
+    }
+
     if (score <= 0) {
       return undefined;
     }
     return { file, score, reasons: dedupe(reasons).slice(0, 4), matchedSymbols };
+  }
+
+  /**
+   * Rarity weight per query term: how many indexed files mention the term.
+   *
+   * Computed once per query (one pass over the index) rather than per file, so
+   * the cost stays linear. A term that appears everywhere ("service") is worth
+   * little; a term that appears in a handful of files ("audit", "refund") is
+   * worth much more. This is what keeps a long natural-language query from
+   * being dominated by its most common words.
+   */
+  private termWeights(terms: string[], scopePrefix: string | undefined, includeTests: boolean): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const term of terms) {
+      counts.set(term, 0);
+    }
+
+    let filesConsidered = 0;
+    for (const file of this.index.allFiles()) {
+      if (scopePrefix && !isInside(scopePrefix, file.path)) {
+        continue;
+      }
+      if (!includeTests && file.kind === 'test') {
+        continue;
+      }
+      filesConsidered += 1;
+
+      const haystack = [
+        file.path.toLowerCase(),
+        ...splitIdentifier(file.path).map((part) => part.toLowerCase()),
+        ...file.symbols.map((symbol) => `${symbol.name} ${symbol.signature ?? ''}`.toLowerCase()),
+        ...file.imports.map((importRecord) => importRecord.specifier.toLowerCase())
+      ].join(' ');
+
+      for (const term of terms) {
+        // Counted with the same "does it appear at all" test the scorer uses,
+        // so the weight and the score agree about what counts as a match.
+        if (haystack.includes(term)) {
+          counts.set(term, (counts.get(term) ?? 0) + 1);
+        }
+      }
+    }
+
+    const weights = new Map<string, number>();
+    for (const term of terms) {
+      const frequency = counts.get(term) ?? 0;
+      weights.set(term, idfWeight(frequency, filesConsidered));
+    }
+    return weights;
   }
 
   /** Files close to the best hits are boosted: importers and imported modules. */
@@ -430,6 +571,14 @@ export class ContextRetriever {
    * but no file content. Reading nine snippets to use the tenth is the single most
    * expensive habit `bce_find_context` could encourage.
    */
+  private async buildSnippetItems(candidates: ScoredFile[], options: RetrieveOptions): Promise<ContextItem[]> {
+    const items: ContextItem[] = [];
+    for (const candidate of candidates) {
+      items.push(await this.toContextItem(candidate, options));
+    }
+    return items;
+  }
+
   private toIndexItem(candidate: ScoredFile): ContextItem {
     const matched = candidate.matchedSymbols.slice(0, 4);
     return {
@@ -554,6 +703,25 @@ function describeMatch(kind: SymbolMatchKind): string {
   }
 }
 
+/**
+ * Rendering for the phase-one (`symbolsOnly`) list.
+ *
+ * This is a `path:line` index, not a context bundle, so it must stay cheap: one
+ * line per hit plus the matched symbol locations. Printing the full `why:` and
+ * `symbols:` blocks for ~48 hits produced 16 KB answers that had to be written
+ * to a temp file instead of read - the opposite of the point.
+ */
+export function renderIndexItem(item: ContextItem, index: number): string {
+  const header = `${index}. ${item.path} [${item.language}${item.kind === 'source' ? '' : `, ${item.kind}`}] score ${item.score}`;
+  const locations = item.symbols
+    .slice(0, 3)
+    .map((symbol) => `${symbol.name}${symbol.line ? `:${symbol.line}` : ''}`)
+    .join(', ');
+  const rest = item.symbols.length > 3 ? ` (+${item.symbols.length - 3} more)` : '';
+  const why = item.reasons[0] ? ` - ${item.reasons[0]}` : '';
+  return locations === '' ? `${header}${why}` : `${header}\n   ${locations}${rest}${why}`;
+}
+
 /** Compact rendering used as the tool payload and for token accounting. */
 export function renderItem(item: ContextItem, index: number): string {
   const dirtyMarker = item.dirty ? ' (UNSAVED editor content)' : '';
@@ -598,7 +766,7 @@ export function renderBundle(bundle: ContextBundle, freshness: IndexFreshness): 
   }
   for (const [index, item] of bundle.items.entries()) {
     lines.push('');
-    lines.push(renderItem(item, index + 1));
+    lines.push(bundle.mode === 'index' ? renderIndexItem(item, index + 1) : renderItem(item, index + 1));
   }
   if (bundle.truncated) {
     lines.push('');

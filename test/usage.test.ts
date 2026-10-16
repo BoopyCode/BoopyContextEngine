@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHarness, Harness } from './support/harness';
 import { computeTotals, parseUsageLog, renderUsageReport, USAGE_LOG_FILE, UsageLedger } from '../src/core/diagnostics/usageLedger';
 import { estimateUsageSavings } from '../src/core/diagnostics/savings';
+import { estimateNaiveBaseline } from '../src/core/benchmark/baseline';
 import { runFindContext, runFileContext, runStatus } from '../src/core/tools/handlers';
 import { MemoryStoreFs } from './support/memoryFs';
 
@@ -151,6 +152,37 @@ describe('usage reporting', () => {
     const status = await runStatus(h.intelligence, { verbose: true });
     expect(status.text).toContain('estimated context avoided');
     expect(status.text).toContain(`saved in ${USAGE_LOG_FILE}`);
+    // The status line must not present the naive upper bound as a measurement:
+    // it quotes a range and says so.
+    expect(status.text).toContain('naive upper bound, not a measurement');
+    expect(status.text).toMatch(/~\d+ to ~\d+|up to ~\d+/);
+  });
+
+  it('pairs the saving with what the calls actually answered', async () => {
+    await h.work();
+
+    // One call that answers and one that does not: the saving alone would flatter
+    // the second, so the status must report both.
+    for (const query of ['OrderService refund', 'zzzz_no_such_symbol_zzzz']) {
+      const payload = await runFindContext(h.intelligence, { query });
+      const baseline = estimateNaiveBaseline(h.intelligence.index, query);
+      h.usage.record({
+        tool: 'bce_find_context',
+        label: query,
+        returnedTokens: payload.estimatedTokens,
+        characters: payload.text.length,
+        baselineTokens: baseline.estimatedTokens,
+        baselineFiles: baseline.files,
+        durationMs: 1,
+        hits: payload.quality?.hits
+      });
+    }
+    await h.usage.flush();
+
+    const status = await runStatus(h.intelligence, { verbose: true });
+    expect(status.text).toContain('productive');
+    expect(status.text).toContain('empty');
+    expect(status.text).toContain('token savings are not a quality signal');
   });
 
   it('renders a report that states its own limits', () => {
