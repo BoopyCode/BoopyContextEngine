@@ -16,7 +16,7 @@ import { IgnoreEngine } from '../ignore/ignoreEngine';
 import { ProjectScanner, ScanOptions, ScannedFile, describeError } from '../scan/scanner';
 import { ParserRegistry } from '../parse/registry';
 import { ParseInput } from '../parse/parseTypes';
-import { ImportResolver } from '../parse/resolve';
+import { ImportResolver, Psr4Mapping, parseComposerPsr4 } from '../parse/resolve';
 import { ProjectIndex } from './indexModel';
 import { IndexStore, LoadResult } from './indexStore';
 import { ProjectMapBuilder } from '../map/projectMap';
@@ -267,7 +267,7 @@ export class ProjectIndexer {
 
       this.setPhase('indexing', 0, scan.files.length);
       const pathSet = new Set(scan.files.map((file) => file.path));
-      const resolver = new ImportResolver(pathSet);
+      const resolver = new ImportResolver(pathSet, await this.collectPsr4Mappings(pathSet));
       let processed = 0;
       let updated = 0;
       let unchanged = 0;
@@ -368,6 +368,31 @@ export class ProjectIndexer {
     await this.fullIndex(token);
   }
 
+  /**
+   * Reads every `composer.json` in the workspace and turns its PSR-4 mappings into
+   * resolver input.
+   *
+   * Without this, `App\Foo\Bar` can only be guessed, and in the usual layouts
+   * (`App\` -> `src/`, `App\` -> `app/`, `App\` -> `backend/src/`) the guess fails
+   * for every import - which silently empties the PHP import graph.
+   */
+  private async collectPsr4Mappings(paths: Iterable<string>): Promise<Psr4Mapping[]> {
+    const manifests = [...paths].filter((path) => baseName(path).toLowerCase() === 'composer.json');
+    if (manifests.length === 0) {
+      return [];
+    }
+    const mappings: Psr4Mapping[] = [];
+    for (const manifest of manifests) {
+      try {
+        mappings.push(...parseComposerPsr4(await this.deps.fs.readText(manifest), manifest));
+      } catch {
+        // An unreadable composer.json simply contributes no mappings; the
+        // resolver then falls back to its heuristics.
+      }
+    }
+    return mappings;
+  }
+
   /** Updates the given paths (or removes missing ones). Used by file events and init. */
   async refreshPaths(paths: readonly string[], token?: CancellationLike, force = true): Promise<void> {
     if (this.disposed) {
@@ -393,7 +418,8 @@ export class ProjectIndexer {
     this.setPhase('indexing', 0, unique.length);
 
     try {
-      const resolver = new ImportResolver(new Set([...this.index.paths(), ...unique]));
+      const candidatePaths = [...this.index.paths(), ...unique];
+      const resolver = new ImportResolver(new Set(candidatePaths), await this.collectPsr4Mappings(candidatePaths));
       let processed = 0;
       let updated = 0;
       let removed = 0;

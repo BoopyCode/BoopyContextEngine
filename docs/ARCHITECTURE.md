@@ -143,6 +143,14 @@ part of the data model and appears in tool output.
 same project share the index without touching the working tree. The only file BCE may touch in a
 project is the managed block in `.gitignore`.
 
+**Import resolution is declared, not guessed.** An internal import is linked through the mechanism
+the ecosystem actually declares: relative specifiers for TS/JS, and `autoload.psr-4` from every
+`composer.json` for PHP, longest prefix first. Guessing (`App\` -> `App/`) only works in a flat
+layout and fails silently everywhere else, which is worse than failing loudly. Whatever is still
+unresolved is counted and printed as `coverage:` on every impact report, so "no dependents" can be
+told apart from "the imports could not be linked" - an empty list that reads like a finding is the
+one failure mode an impact tool cannot afford.
+
 **Local caching is not a token guarantee.** A cache hit avoids re-doing *local* work. If the same
 context is sent to the model again, it can still be billed - the README, the diagnostics view and
 the tool output all say so.

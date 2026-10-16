@@ -194,6 +194,66 @@ The same run on 0.1.3 reproduces the functional numbers exactly (577 files index
 92 % hit rate, mean rank 1.9, ~8 634 vs ~171 270 estimated tokens); only the timing rows move, as
 described above.
 
+## 8. Impact analysis on a real PHP repository (0.1.7)
+
+Sections 7 and 6 measure search cost and behaviour consistency. Neither could have caught the two
+bugs below, because both produced a *well-formed, confident, wrong* answer rather than an error. What
+found them was running the tool on a real project and comparing the output against what the code
+actually does: `PaymentService::delete()` has five callers, and 0.1.6 reported
+
+```
+verified parser references (0) - these are safe to trust:
+  (none found)
+```
+
+### Method
+
+The `boopyinvoice` repository (301 indexed files, 193 PHP) was indexed with the harness in
+`test/support/harness.ts` and `bce_explain_impact` was asked for `PaymentService::delete`. The
+expected callers are known independently, by text search:
+
+| Caller | Kind |
+| --- | --- |
+| `backend/src/Controllers/InvoiceController.php:454` | production |
+| `backend/src/Services/BankStatementService.php:404` | production |
+| `backend/src/Services/CashRegisterService.php:728` | production |
+| `backend/tests/sprint2-payments-reminders.php:125` | test |
+| `backend/tests/sprint23-cash-register.php:326` | test |
+
+### Result
+
+| Version | `verified parser references` (only the known five counted) | `coverage:` | Import graph |
+| --- | --- | --- | --- |
+| 0.1.6 | 0 of 5 | not reported | 0 of 168 `use App\...` imports linked |
+| 0.1.7, resolver only | 5 of 5 | `75 % (100/407 unresolved)` | namespaces linked, vendor namespaces still counted as holes |
+| 0.1.7 final | 5 of 5 | `100 % (0/307 unresolved)`, 22 references, 6 dependents | 307 of 307 internal imports linked |
+
+Two independent causes, each enough on its own to hide the callers:
+
+1. **`delete` was filtered as a keyword.** The reserved word list was shared between languages and
+   contained the JavaScript keyword `delete`, so every PHP reference named `delete` was dropped
+   during parsing - before any analysis ran. Each parser now has its own list.
+2. **PHP namespaces were never resolved.** `composer.json` `autoload.psr-4` was not read, so
+   `App\Services\PaymentService` was guessed as `App/Services/PaymentService.php`; in this layout the
+   real path is `backend/src/Services/PaymentService.php`. All 168 imports failed, and the dependency
+   graph then classified every one of them as an *external package* - so the index still reported
+   `complete: true`.
+
+The second row of the table is the useful one: installing the resolver alone produced `coverage: 75 %`
+rather than `100 %`, because a namespace whose root was unknown was counted as an internal hole. Real
+projects contain both, and the first version of the fix over-reported. That number is what exposed it.
+
+### What this run says about the benchmark suite
+
+* **A benchmark suite that only measures cost cannot find a wrong answer.** Every existing metric
+  (files indexed, hit rate, mean rank, estimated tokens) was healthy while the impact tool was
+  returning nothing.
+* The regression is now covered by `test/impact.test.ts`, which builds a miniature PHP project with a
+  `backend/composer.json`, so the two causes cannot come back unnoticed.
+* **Still not measured:** how many *agent* steps the correct impact answer saves. That remains the
+  A/B in section 6, and it is the measurement that would justify the tool on grounds other than
+  correctness.
+
 ---
 
 Boopy Context Engine is part of the Boopy developer tooling - [boopycode.com](https://boopycode.com).

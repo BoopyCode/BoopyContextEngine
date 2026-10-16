@@ -11,6 +11,7 @@ import { FileSystemLike } from './io/fs';
 import { DocumentSnapshot, noOpenDocuments, OpenDocumentProvider } from './io/documents';
 import { IgnoreDecision, IgnoreEngine } from './ignore/ignoreEngine';
 import { ParserRegistry } from './parse/registry';
+import { ImportResolver } from './parse/resolve';
 import { classifyFile, detectLanguage } from './parse/languages';
 import { ProjectIndex } from './index/indexModel';
 import { ProjectIndexer } from './index/projectIndexer';
@@ -31,17 +32,42 @@ export interface ImpactReference {
   confidence: string;
 }
 
+export interface ImpactCoverage {
+  /** Internal (workspace) imports the parser saw: resolved plus unresolved. */
+  internalImports: number;
+  /** Internal imports the resolver could not link to a file. */
+  unresolvedInternalImports: number;
+  /** Files affected by at least one unresolved internal import. */
+  filesWithUnresolvedImports: number;
+  /** Share of internal imports that were linked, 0-100. */
+  linkedPercent: number;
+}
+
 export interface ImpactReport {
   target: { kind: 'file' | 'symbol'; path?: string; symbol?: string };
+  /**
+   * False when the requested symbol or class could not be located. The empty lists
+   * in such a report are "not analysed", never "no dependents".
+   */
+  resolved: boolean;
   verified: ImpactReference[];
   dependents: { path: string; reason: string }[];
   heuristics: { path: string; reason: string }[];
   tests: string[];
   relatedDatabase: DatabaseSchemaEntry[];
   warnings: string[];
+  coverage: ImpactCoverage;
   indexVersion: number;
   freshness: IndexFreshness;
 }
+
+const CLASS_LIKE_KINDS: ReadonlySet<SymbolRecord['kind']> = new Set([
+  'class',
+  'interface',
+  'trait',
+  'enum',
+  'type'
+]);
 
 export interface RelatedTestsReport {
   target: { path?: string; symbol?: string };
@@ -325,21 +351,72 @@ export class WorkspaceIntelligence {
 
   async buildImpactReport(input: { path?: string; symbol?: string }): Promise<ImpactReport> {
     const warnings: string[] = [];
+    const coverage = this.impactCoverage();
+    const notAnalysed = (reason: string): ImpactReport => ({
+      target: { kind: 'symbol', path: input.path, symbol: input.symbol?.trim() },
+      resolved: false,
+      verified: [],
+      dependents: [],
+      heuristics: [],
+      tests: [],
+      relatedDatabase: [],
+      warnings: [reason],
+      coverage,
+      indexVersion: this.index.indexVersion,
+      freshness: this.getFreshness()
+    });
+
     let targetPath: string | undefined;
     let symbolName = input.symbol?.trim();
     let symbol: SymbolRecord | undefined;
 
-    if (input.path) {
+    // `Class::method` is what people naturally type. The symbol table is keyed by
+    // the bare name, so accepting the qualified form must resolve it properly -
+    // silently answering about some other `method`, or about the whole file, is
+    // how a confident report ends up describing a different question.
+    let qualifier: string | undefined;
+    if (symbolName && symbolName.includes('::')) {
+      const [container, ...rest] = symbolName.split('::');
+      qualifier = container.trim() || undefined;
+      symbolName = rest.join('::').trim() || undefined;
+    }
+
+    if (qualifier) {
+      const containerMatch = this.index.findBySymbol(qualifier).find((match) => CLASS_LIKE_KINDS.has(match.symbol.kind));
+      if (!containerMatch) {
+        return notAnalysed(
+          `Class "${qualifier}" is not present in the index, so "${symbolName ?? qualifier}" was not analysed. ` +
+            'Use the bare member name, or "path" for file level impact.'
+        );
+      }
+      targetPath = containerMatch.file.path;
+      if (symbolName) {
+        symbol = containerMatch.file.symbols.find(
+          (candidate) => candidate.name.toLowerCase() === symbolName?.toLowerCase()
+        );
+        if (!symbol) {
+          return notAnalysed(
+            `"${qualifier}" has no member named "${symbolName}" in ${targetPath}, so nothing was analysed. ` +
+              'An empty result here is "not found", not "no dependents".'
+          );
+        }
+      } else {
+        symbol = containerMatch.symbol;
+        symbolName = containerMatch.symbol.name;
+      }
+    } else if (input.path) {
       const resolved = this.fileRecord(input.path);
       if (resolved.error) {
         return {
           target: { kind: 'file', path: input.path },
+          resolved: false,
           verified: [],
           dependents: [],
           heuristics: [],
           tests: [],
           relatedDatabase: [],
           warnings: [resolved.error],
+          coverage,
           indexVersion: this.index.indexVersion,
           freshness: this.getFreshness()
         };
@@ -348,7 +425,10 @@ export class WorkspaceIntelligence {
       if (symbolName) {
         symbol = resolved.record?.symbols.find((candidate) => candidate.name.toLowerCase() === symbolName?.toLowerCase());
         if (!symbol) {
-          warnings.push(`Symbol "${symbolName}" was not found in ${targetPath}; showing file level impact instead.`);
+          return notAnalysed(
+            `Symbol "${symbolName}" was not found in ${targetPath ?? input.path}, so nothing was analysed. ` +
+              'An empty result here is "not found", not "no dependents". Pass "path" alone for file level impact.'
+          );
         }
       }
     } else if (symbolName) {
@@ -356,12 +436,17 @@ export class WorkspaceIntelligence {
       if (matches.length === 0) {
         return {
           target: { kind: 'symbol', symbol: symbolName },
+          resolved: false,
           verified: [],
           dependents: [],
           heuristics: [],
           tests: [],
           relatedDatabase: [],
-          warnings: [`Symbol "${symbolName}" is not present in the index. It may be new, ignored or defined dynamically.`],
+          warnings: [
+            `Symbol "${symbolName}" is not present in the index. It may be new, ignored or defined dynamically. ` +
+              'An empty result here is "not found", not "no dependents".'
+          ],
+          coverage,
           indexVersion: this.index.indexVersion,
           freshness: this.getFreshness()
         };
@@ -434,7 +519,14 @@ export class WorkspaceIntelligence {
     );
 
     if (verified.length === 0 && symbolName) {
-      warnings.push(`No parser verified reference to "${symbolName}"; the lists below are heuristics and must be checked in the files.`);
+      const incomplete = coverage.unresolvedInternalImports > 0;
+      warnings.push(
+        incomplete
+          ? `No parser verified reference to "${symbolName}" was found, and the import graph is incomplete ` +
+              `(${coverage.unresolvedInternalImports} of ${coverage.internalImports} internal imports unresolved in ` +
+              `${coverage.filesWithUnresolvedImports} file(s)). Verify with a text search before changing this code.`
+          : `No parser verified reference to "${symbolName}"; the lists below are heuristics and must be checked in the files.`
+      );
     }
     if (!symbolName && dependents.length === 0) {
       warnings.push('No importer of this file was found in the index. Dynamic loading (runtime include, DI container, route registration) is invisible to the parser.');
@@ -442,14 +534,52 @@ export class WorkspaceIntelligence {
 
     return {
       target: { kind: input.path ? 'file' : 'symbol', path: targetPath, symbol: symbolName },
+      resolved: true,
       verified,
       dependents,
       heuristics,
       tests: [...tests],
       relatedDatabase,
       warnings,
+      coverage,
       indexVersion: this.index.indexVersion,
       freshness: this.getFreshness()
+    };
+  }
+
+  /**
+   * Import-graph health of the current index.
+   *
+   * Impact analysis is only as good as the graph behind it, so the numbers travel
+   * with every report. Without them an empty "no dependents" list caused by an
+   * unresolved import is indistinguishable from a real finding - which is exactly
+   * how a broken index loses the trust of the agent reading it.
+   */
+  private impactCoverage(): ImpactCoverage {
+    const namespaceRoots = this.index.declaredNamespaceRoots();
+    let internalImports = 0;
+    let unresolvedInternalImports = 0;
+    const affected = new Set<string>();
+    for (const file of this.index.allFiles()) {
+      for (const importRecord of file.imports) {
+        if (importRecord.resolved !== undefined) {
+          internalImports += 1;
+          continue;
+        }
+        if (!ImportResolver.isInternalSpecifier(importRecord.specifier, namespaceRoots)) {
+          continue;
+        }
+        internalImports += 1;
+        unresolvedInternalImports += 1;
+        affected.add(file.path);
+      }
+    }
+    const linked = internalImports - unresolvedInternalImports;
+    return {
+      internalImports,
+      unresolvedInternalImports,
+      filesWithUnresolvedImports: affected.size,
+      linkedPercent: internalImports === 0 ? 100 : Math.round((linked / internalImports) * 100)
     };
   }
 

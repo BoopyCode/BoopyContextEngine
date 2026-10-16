@@ -13,6 +13,7 @@ import {
 import { baseName, dirOf, extName } from '../util/paths';
 import { SCHEMA_VERSION } from '../parse/registry';
 import { moduleOf, ProjectIndex } from '../index/indexModel';
+import { ImportResolver } from '../parse/resolve';
 import { isTestConfigFile } from '../parse/languages';
 
 const MAX_MODULES = 40;
@@ -318,13 +319,18 @@ export class ProjectMapBuilder {
     const edges: { from: string; to: string; confidence: 'exact' | 'heuristic' }[] = [];
     const external = new Set<string>();
     const unresolved: { from: string; specifier: string; line: number }[] = [];
+    const namespaceRoots = index.declaredNamespaceRoots();
     for (const file of index.allFiles()) {
       for (const dependency of file.dependencies) {
         edges.push({ from: file.path, to: dependency, confidence: 'heuristic' });
       }
       for (const importRecord of file.imports) {
         if (importRecord.resolved === undefined) {
-          if (/^[.@]/.test(importRecord.specifier)) {
+          // A PHP namespace that the resolver could not link is a hole in the
+          // graph, not a vendor package - unless its root namespace is unknown
+          // here, in which case it really is external. Reporting holes as external
+          // is what lets a broken index look healthy.
+          if (ImportResolver.isInternalSpecifier(importRecord.specifier, namespaceRoots)) {
             unresolved.push({ from: file.path, specifier: importRecord.specifier, line: importRecord.line });
           } else {
             external.add(importRecord.specifier);

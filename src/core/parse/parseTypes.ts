@@ -30,13 +30,22 @@ export const MAX_SYMBOLS_PER_FILE = 400;
 export const MAX_REFERENCES_PER_NAME = 3;
 export const MAX_REFERENCES_PER_FILE = 3000;
 
-/** Collects references, keeping only a few occurrences per name to bound index size. */
+/**
+ * Collects references, keeping only a few occurrences per name to bound index size.
+ *
+ * The reserved word filter must be language specific. A shared list makes PHP
+ * methods named `delete`, `get`, `set` or `default` invisible, because those are
+ * keywords in JavaScript but perfectly ordinary method names in PHP - impact
+ * analysis then reports "no references" for code that clearly has callers.
+ */
 export class ReferenceCollector {
   private readonly map = new Map<string, ReferenceRecord[]>();
   private count = 0;
 
+  constructor(private readonly reserved: ReadonlySet<string> = KEYWORDS) {}
+
   add(name: string, line: number, kind: ReferenceRecord['kind'], confidence: Confidence = 'heuristic'): void {
-    if (typeof name !== 'string' || name.length < 2 || KEYWORDS.has(name)) {
+    if (typeof name !== 'string' || name.length < 2 || this.reserved.has(name)) {
       return;
     }
     if (this.count >= MAX_REFERENCES_PER_FILE) {
@@ -66,6 +75,7 @@ export class ReferenceCollector {
   }
 }
 
+/** Default reserved words: JavaScript/TypeScript, plus SQL-ish statement words. */
 export const KEYWORDS = new Set([
   'if',
   'for',
@@ -162,6 +172,139 @@ export const KEYWORDS = new Set([
   'select',
   'where',
   'from'
+]);
+
+/**
+ * Reserved words for PHP.
+ *
+ * Deliberately *not* included: `delete`, `get`, `set`, `default`, `with`, `of`,
+ * `is`, `type`. Those are JavaScript keywords, but in PHP they are ordinary and
+ * very common method names (`$this->payments->delete(...)`). Filtering them made
+ * `bceImpact` report zero references for methods that do have callers.
+ *
+ * `array`, `list`, `print`, `echo`, `isset`, `match` and `declare` stay filtered
+ * because they really do appear as `word(` language constructs in PHP source.
+ */
+export const PHP_KEYWORDS = new Set([
+  'abstract',
+  'and',
+  'array',
+  'as',
+  'break',
+  'callable',
+  'case',
+  'catch',
+  'class',
+  'clone',
+  'const',
+  'continue',
+  'declare',
+  'die',
+  'do',
+  'echo',
+  'else',
+  'elseif',
+  'empty',
+  'enddeclare',
+  'endfor',
+  'endforeach',
+  'endif',
+  'endswitch',
+  'endwhile',
+  'enum',
+  'eval',
+  'exit',
+  'extends',
+  'final',
+  'finally',
+  'fn',
+  'for',
+  'foreach',
+  'function',
+  'global',
+  'goto',
+  'if',
+  'implements',
+  'include',
+  'include_once',
+  'instanceof',
+  'insteadof',
+  'interface',
+  'isset',
+  'list',
+  'match',
+  'namespace',
+  'new',
+  'or',
+  'parent',
+  'print',
+  'private',
+  'protected',
+  'public',
+  'readonly',
+  'require',
+  'require_once',
+  'return',
+  'self',
+  'static',
+  'switch',
+  'throw',
+  'trait',
+  'try',
+  'unset',
+  'use',
+  'var',
+  'while',
+  'xor',
+  'yield'
+]);
+
+/**
+ * Reserved words for Python.
+ *
+ * Same reasoning as {@link PHP_KEYWORDS}: `delete`, `get`, `set` and `default`
+ * are not Python keywords and must stay searchable.
+ */
+export const PYTHON_KEYWORDS = new Set([
+  'and',
+  'as',
+  'assert',
+  'async',
+  'await',
+  'break',
+  'class',
+  'continue',
+  'def',
+  'del',
+  'elif',
+  'else',
+  'except',
+  'finally',
+  'for',
+  'from',
+  'global',
+  'if',
+  'import',
+  'in',
+  'is',
+  'lambda',
+  'nonlocal',
+  'not',
+  'or',
+  'pass',
+  'print',
+  'raise',
+  'return',
+  'try',
+  'while',
+  'with',
+  'yield',
+  'False',
+  'None',
+  'True',
+  'case',
+  'match',
+  'self'
 ]);
 
 export interface SymbolDraft {

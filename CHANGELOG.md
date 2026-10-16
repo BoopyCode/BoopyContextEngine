@@ -2,6 +2,64 @@
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 
+## [0.1.7] - 2026-10-16
+
+Impact analysis stopped claiming that code had no dependents. Both bugs come from a real repository
+where `PaymentService::delete()` has five callers and BCE answered *"verified parser references (0) -
+these are safe to trust"*.
+
+### Fixed
+
+* **PHP references named after a keyword of another language were dropped while parsing.** The
+  reserved word list was shared by every parser and contained `delete`, `get`, `set`, `default`,
+  `with`, `of`, `is` and `type`. `delete` is a JavaScript keyword, but an ordinary PHP method name -
+  so `$this->payments->delete(...)` was removed before any analysis could see it. Each parser now
+  filters with its own list (`PHP_KEYWORDS`, `PYTHON_KEYWORDS`) while real language constructs
+  (`array(`, `list(`, `isset(`, `print(`, `declare(`) stay ignored.
+* **PHP namespaces were resolved without reading `composer.json`.** `App\Services\PaymentService` was
+  guessed as `App/Services/PaymentService.php` or by a case-insensitive suffix match, which fails in
+  any layout where the application lives in a subdirectory (`App\` -> `backend/src/`). Every
+  `use App\...` import stayed unresolved and the whole backend reported zero dependents.
+  `autoload.psr-4` (and `autoload-dev.psr-4`) from every `composer.json` is now read, longest prefix
+  first, before falling back to the heuristics.
+* **An unresolved namespace was counted as an external package.** The dependency graph classified
+  anything not starting with `.` or `@` as external, so a completely unlinked PHP import graph still
+  reported a healthy index. A namespace is now internal when its root is a namespace the project
+  actually declares; vendor namespaces (`Psr\`, `Slim\`, `Dotenv\`) remain external.
+
+### Added
+
+* **`bce_explain_impact` accepts `Class::method`.** The qualified form missed the symbol table (which
+  is keyed by the bare name) and quietly fell back to file level, so the answer described a file
+  while the question was about a method.
+* **A `coverage:` line on every impact report**, for example
+  `coverage: 100% of internal imports linked (0/307 unresolved, 0 file(s) affected)`. On the
+  repository above it read `75%` before the resolver fix and `100%` after it, so the number is a real
+  signal and not a formality.
+* **`NOT ANALYSED` instead of an empty report.** When the requested symbol or class cannot be
+  located, the three empty sections are no longer printed: *"verified parser references (0) - these
+  are safe to trust"* reads as a finding, and an empty list is far more often a hole in the index
+  than an answer. When the graph itself is incomplete, that same section says so instead.
+* **Contributed instructions** (`contributes.chatInstructions`). Until now the only thing telling an
+  agent that BCE exists was a slash command a human had to invoke, so an agent that had not been told
+  about the extension never used it. The contributed file states the order of operations and how to
+  read `coverage:` and `NOT ANALYSED` honestly.
+* **`test/extension.test.ts` guards the contributed instructions.** A typo in the `path`, a missing
+  file or a missing frontmatter field would leave the extension working while the agent never learns
+  that BCE exists, so the manifest entry, the file and its `name`/`description` are now asserted. The
+  test also rejects snake_case tool ids inside the instructions: a chat prompt only resolves the
+  camelCase `toolReferenceName` (`bceImpact`), which is exactly the mistake the older
+  `prompts/bce-context.prompt.md` still contains.
+* **Section 8 of `docs/BENCHMARK.md`** records the measured before/after on a real PHP repository -
+  the two impact bugs, and the fact that the intermediate fix reported `75 %` coverage instead of
+  `100 %`, which is what exposed the second cause.
+
+### Changed
+
+* The `bce_explain_impact` and `bce_find_context` descriptions mention `Class::method` and the
+  coverage line, because the description is what an agent reads after it has already decided to go
+  looking for the tool.
+
 ## [0.1.6] - 2026-10-15
 
 The tool descriptions were rewritten. What mattered was not their length but their first words.

@@ -1,6 +1,6 @@
 import { docCommentAbove, findIndentBlockEnd, maskCode, splitLines, trimSignature } from '../../util/text';
 import { SymbolRecord } from '../../types';
-import { FileParser, ParseInput, ParseOutput, pushSymbol, ReferenceCollector } from '../parseTypes';
+import { FileParser, ParseInput, ParseOutput, pushSymbol, PYTHON_KEYWORDS, ReferenceCollector } from '../parseTypes';
 
 const PARSER_VERSION = 'python-3';
 
@@ -28,7 +28,7 @@ export class PythonParser implements FileParser {
     const maskedLines = masked.lines;
     const symbols: SymbolRecord[] = [];
     const imports: ParseOutput['imports'] = [];
-    const references = new ReferenceCollector();
+    const references = new ReferenceCollector(PYTHON_KEYWORDS);
     const classStack: { name: string; indent: number }[] = [];
     let djangoModels = false;
     let flaskOrFastApi = false;

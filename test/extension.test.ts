@@ -75,6 +75,38 @@ async function waitForIdleIndexer(): Promise<void> {
 }
 
 describe('extension activation', () => {
+  it('ships contributed instructions that point at a real file with usable frontmatter', async () => {
+    // Contributed instructions are not loaded by the extension host, so nothing in
+    // src/ would notice a typo in the path or a missing file: the extension keeps
+    // working and the agent simply never learns that BCE exists. This is the guard.
+    const manifest = JSON.parse(await fs.readFile(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+      contributes?: { chatInstructions?: { path?: string }[] };
+      version?: string;
+    };
+    const entries = manifest.contributes?.chatInstructions ?? [];
+    expect(entries.length).toBeGreaterThan(0);
+
+    for (const entry of entries) {
+      expect(typeof entry.path).toBe('string');
+      const relPath = (entry.path as string).replace(/^\.\//, '');
+      const absolute = path.join(__dirname, '..', ...relPath.split('/'));
+      const content = await fs.readFile(absolute, 'utf8');
+
+      // Frontmatter, because `name` and `description` belong in the file and the
+      // description is what makes the instructions discoverable on demand.
+      expect(content.startsWith('---')).toBe(true);
+      const frontmatter = content.split('---')[1] ?? '';
+      expect(frontmatter).toMatch(/^name:/m);
+      expect(frontmatter).toMatch(/^description:/m);
+
+      // Tool names must be the camelCase reference names VS Code registers, not the
+      // snake_case tool ids: a chat prompt only resolves the former.
+      for (const match of content.matchAll(/`(bce_[a-z_]+)`/g)) {
+        expect(match[1]).toBe(match[1].replace(/_([a-z])/g, (_all, c: string) => c.toUpperCase()));
+      }
+    }
+  });
+
   it('registers every language model tool, command and the status bar', async () => {
     await activate(context as unknown as vscode.ExtensionContext);
     expect([...__mock.state.tools.keys()].sort()).toEqual([

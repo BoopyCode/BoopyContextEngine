@@ -85,7 +85,7 @@ Details and prompt templates: [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
 | `bce_get_project_overview` | Compact map: languages, frameworks, entry points, modules, DB objects, routes, tests, instruction files | You are new to the project or the task spans several modules | You only touch a file you already have open |
 | `bce_find_context` | Ranked, de-duplicated hits with reasons, `path:line`, small snippets and a token count | You need to locate responsible code, a table, an endpoint or a symbol | You already know the exact path (use `bce_get_file_context`) |
 | `bce_get_file_context` | One symbol or one line range plus imports/dependents/tests | You know the file and need one symbol body | You are exploring unknown code |
-| `bce_explain_impact` | Dependents of a symbol/file, split into **verified** references and **heuristic** guesses | Before refactoring, renaming or deleting | For brand new code that is not indexed yet |
+| `bce_explain_impact` | Dependents of a symbol/file (accepts `Class::method`), split into **verified** references and **heuristic** guesses, plus a `coverage:` line for the import graph | Before refactoring, renaming or deleting | For brand new code that is not indexed yet |
 | `bce_get_related_tests` | Tests bound by convention/import/usage + runner configuration | Before writing tests, after changing behavior | As proof of coverage |
 | `bce_get_status` | Index freshness, counts, cache counters, errors | Results look stale or incomplete | - |
 
@@ -331,8 +331,10 @@ Known limitations, stated plainly:
   decorator or macro magic can be missed; such results are marked `heuristic`.
 * No deep call-graph or type resolution. `bce_explain_impact` therefore separates verified
   references from text matches instead of pretending to be complete.
-* `tsconfig` path aliases and dynamic `require()` are not resolved; unresolved specifiers are
-  reported as such in `dependencies.json`.
+* `tsconfig` path aliases and dynamic `require()` are not resolved. Composer `autoload.psr-4`
+  mappings **are** read, so PHP namespaces resolve in the usual layouts; anything still unresolved is
+  reported as such in `dependencies.json` and counted in the `coverage:` line of every impact report,
+  so an empty dependent list can be told apart from a missing edge.
 * A file edited while VS Code is closed is picked up by size/mtime; an edit that preserves both
   size and mtime is only detected through a file event, i.e. while VS Code is open (documented
   trade-off, see `test/indexer.test.ts`).

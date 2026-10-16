@@ -109,6 +109,35 @@ export class ProjectIndex {
     return out;
   }
 
+  /**
+   * Lowercased root segments of the namespaces declared in the workspace.
+   *
+   * This is what separates an internal namespace that failed to resolve (a real
+   * hole in the import graph) from a vendor namespace such as `Psr\` or `Slim\`,
+   * which is external by definition and must never be reported as a missing edge.
+   */
+  declaredNamespaceRoots(): Set<string> {
+    const roots = new Set<string>();
+    for (const file of this.files.values()) {
+      for (const symbol of file.symbols) {
+        if (
+          symbol.kind !== 'class' &&
+          symbol.kind !== 'interface' &&
+          symbol.kind !== 'trait' &&
+          symbol.kind !== 'enum'
+        ) {
+          continue;
+        }
+        const detail = typeof symbol.detail === 'string' ? symbol.detail : '';
+        const root = detail.split('\\')[0].trim().toLowerCase();
+        if (root.length > 0) {
+          roots.add(root);
+        }
+      }
+    }
+    return roots;
+  }
+
   /** Files that import `path` directly. */
   reverseDependencies(path: string): FileRecord[] {
     const out: FileRecord[] = [];

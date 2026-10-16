@@ -2,7 +2,7 @@
   "name": "boopy-context-engine",
   "displayName": "Boopy Context Engine (BCE)",
   "description": "Local project indexing, project map and token-efficient context tools for GitHub Copilot Agent mode. Works fully offline, no paid AI API required.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "BoopyCode",
   "author": {
     "name": "BoopyCode"
@@ -50,6 +50,12 @@
     }
   },
   "contributes": {
+    "chatInstructions": [
+      {
+        "path": "./prompts/bce-recommended.instructions.md",
+        "when": "config.bce.enabled"
+      }
+    ],
     "languageModelTools": [
       {
         "name": "bce_get_project_overview",
@@ -92,7 +98,7 @@
           "context",
           "search"
         ],
-        "modelDescription": "The primary way to locate code: use it to find the files, symbols, endpoints, tables or tests for a task instead of grepping the repository repeatedly or reading whole files, and before concluding that something does not exist. Prefer it over attaching or pasting entire files: Copilot's own implicit file attachment is redundant once you call this, and every extra attached file costs tokens. It runs the local Boopy Context Engine retriever and returns a ranked, de-duplicated, token-bounded bundle: matching files and symbols, why each hit is relevant, exact path:line references, one minimal snippet per hit, an estimated token count and the index freshness. Narrow with 'scope' when you know the area; if the answer seems incomplete, call it again with a sharper 'query' rather than raising maxTokens blindly. Do NOT use it for a file you already know - use bce_get_file_context - and do not treat ranked hits as proof: open the listed ranges before editing.",
+        "modelDescription": "The primary way to locate code: use it to find the files, symbols, endpoints, tables or tests for a task instead of grepping the repository repeatedly or reading whole files, and before concluding that something does not exist. Reach for it before the first repository-wide search of an unfamiliar area. Prefer it over attaching or pasting entire files: Copilot's own implicit file attachment is redundant once you call this, and every extra attached file costs tokens. It runs the local Boopy Context Engine retriever and returns a ranked, de-duplicated, token-bounded bundle: matching files and symbols, why each hit is relevant, exact path:line references, one minimal snippet per hit, an estimated token count and the index freshness. Narrow with 'scope' when you know the area; if the answer seems incomplete, call it again with a sharper 'query' rather than raising maxTokens blindly. Do NOT use it for a file you already know - use bce_get_file_context - and do not treat ranked hits as proof: open the listed ranges before editing.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -182,7 +188,7 @@
           "context",
           "impact"
         ],
-        "modelDescription": "Use this before renaming, moving, deleting or changing the signature of shared code, and whenever the user asks what uses something, whether it is safe to delete, or what would break. Reports what the local index knows to be affected in two clearly separated groups: verified parser references (safe to trust) and heuristic estimates (text matches, unresolved imports, dynamic usage - these MUST be verified in the files). It also lists related tests and database objects. Never present the heuristic group as a complete impact set, and do not use this tool for code that does not exist in the index yet (new code has no dependents).",
+        "modelDescription": "Use this before renaming, moving, deleting or changing the signature of shared code, and whenever the user asks what uses something, whether it is safe to delete, or what would break. Reports what the local index knows to be affected in two clearly separated groups: verified parser references (safe to trust) and heuristic estimates (text matches, unresolved imports, dynamic usage - these MUST be verified in the files). Qualify ambiguous members as \"Class::method\". A \"coverage:\" line reports how much of the import graph the index could link; when it is below 100 percent an empty list is a hole in the index rather than proof that nothing uses the code. If the target cannot be resolved the report says NOT ANALYSED and deliberately shows no lists - that is never \"no dependents\". It also lists related tests and database objects. Never present the heuristic group as a complete impact set, and do not use this tool for code that does not exist in the index yet (new code has no dependents).",
         "inputSchema": {
           "type": "object",
           "properties": {

@@ -236,11 +236,38 @@ export async function runExplainImpact(ws: WorkspaceIntelligence, input: ImpactI
     }`
   );
   lines.push(`index v${report.indexVersion}, freshness: ${report.freshness.complete ? (report.freshness.stale ? 'stale (pending updates)' : 'fresh') : 'incomplete'}`);
+  lines.push(
+    `coverage: ${report.coverage.linkedPercent}% of internal imports linked ` +
+      `(${report.coverage.unresolvedInternalImports}/${report.coverage.internalImports} unresolved, ` +
+      `${report.coverage.filesWithUnresolvedImports} file(s) affected)`
+  );
+
+  // A report about a target that could not be located must not print three empty
+  // sections. "verified parser references (0) - safe to trust" reads as a finding,
+  // and an empty list is far more often a hole in the index than an answer.
+  if (!report.resolved) {
+    lines.push('');
+    lines.push('NOT ANALYSED - the requested target could not be resolved:');
+    for (const warning of report.warnings) {
+      lines.push(`  - ${warning}`);
+    }
+    lines.push('');
+    lines.push('No reference, dependent or heuristic list is shown on purpose: an empty list here would be indistinguishable from "nothing depends on this".');
+    return finishImpact(lines, budget, estimator);
+  }
+
+  const graphIncomplete = report.coverage.unresolvedInternalImports > 0;
   lines.push('');
-  lines.push(`verified parser references (${report.verified.length}) - these are safe to trust:`);
+  lines.push(
+    `verified parser references (${report.verified.length})${
+      graphIncomplete ? ' - parser-confirmed, but the import graph is incomplete, see coverage' : ' - these are safe to trust'
+    }:`
+  );
   lines.push(
     report.verified.length === 0
-      ? '  (none found)'
+      ? graphIncomplete
+        ? '  (none found) - NOT proof of absence: the parser cannot link every import in this workspace yet.'
+        : '  (none found)'
       : report.verified
           .slice(0, 25)
           .map((reference) => `  - ${reference.path}:${reference.line} (${reference.kind})`)
@@ -270,6 +297,10 @@ export async function runExplainImpact(ws: WorkspaceIntelligence, input: ImpactI
       lines.push(`  - ${warning}`);
     }
   }
+  return finishImpact(lines, budget, estimator);
+}
+
+function finishImpact(lines: string[], budget: TokenBudget, estimator: TokenEstimator): ToolPayload {
   const text = lines.join('\n');
   const accepted = budget.tryAdd(text);
   const finalText = accepted
