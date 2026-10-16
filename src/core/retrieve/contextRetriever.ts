@@ -10,6 +10,7 @@ import { baseName, dirOf, isInside, splitIdentifier } from '../util/paths';
 import { defaultTokenEstimator, TokenBudget, TokenEstimator } from '../util/tokens';
 import { ProjectIndex } from '../index/indexModel';
 import { LineRange, renderSnippet } from './snippets';
+import { fileTermsOf, matchSymbolTerm, nameTerms, SYMBOL_KIND_BONUS, SymbolMatchKind, TERM_FILE_AFFINITY } from './symbolRanking';
 
 export interface RetrieveOptions {
   query: string;
@@ -19,6 +20,13 @@ export interface RetrieveOptions {
   includeSnippets: boolean;
   maxResults: number;
   snippetLines: number;
+  /**
+   * Index-only mode: return ranked `path:line` hits without reading any file body.
+   * This is phase one of a two-phase lookup - the agent picks a target from the
+   * cheap list and asks for the body with `bce_get_file_context` afterwards, which
+   * avoids paying for snippets of nine files to use the tenth.
+   */
+  symbolsOnly?: boolean;
   /** Paths changed recently (for example from git), used as a relevance signal. */
   recentPaths?: readonly string[];
   entryPoints?: readonly string[];
@@ -204,9 +212,16 @@ export class ContextRetriever {
       items.push(await this.toContextItem(candidate, options));
     }
 
+    // Index-only mode ranks many more targets than the snippet mode could afford,
+    // because a `path:line` line costs a fraction of a code block.
+    const ranked = options.symbolsOnly ? scored.slice(0, Math.max(options.maxResults * 4, 12)) : shortlisted;
+    const finalItems: ContextItem[] = options.symbolsOnly && ranked.length > shortlisted.length
+      ? ranked.map((candidate) => this.toIndexItem(candidate))
+      : items;
+
     const budget = new TokenBudget(options.maxTokens, this.estimator);
     const kept: ContextItem[] = [];
-    for (const item of items) {
+    for (const item of finalItems) {
       const rendered = renderItem(item, kept.length + 1);
       if (!budget.tryAdd(`${rendered}\n`)) {
         item.snippet = undefined;
@@ -220,13 +235,13 @@ export class ContextRetriever {
       kept.push(item);
     }
 
-    const truncated = kept.length < items.length;
+    const truncated = kept.length < finalItems.length;
     if (truncated) {
       warnings.push(
-        `The token budget (${options.maxTokens}) was reached after ${kept.length} of ${items.length} ranked hits. Narrow the query or the scope to see the rest.`
+        `The token budget (${options.maxTokens}) was reached after ${kept.length} of ${finalItems.length} ranked hits. Narrow the query or the scope to see the rest.`
       );
     }
-    if (kept.length === 0 && items.length === 0) {
+    if (kept.length === 0 && finalItems.length === 0) {
       warnings.push('No indexed file matched the query terms. Try different terms, name a symbol or file directly, or drop the scope filter.');
     }
     const dirtyCount = kept.filter((item) => item.dirty).length;
@@ -269,6 +284,8 @@ export class ContextRetriever {
     const lowerPath = file.path.toLowerCase();
     const fileName = baseName(file.path).toLowerCase();
     const pathTerms = new Set(splitIdentifier(file.path));
+    const names = nameTerms(terms);
+    const fileTerms = fileTermsOf(file);
 
     for (const term of terms) {
       if (fileName === term) {
@@ -288,31 +305,28 @@ export class ContextRetriever {
     }
 
     for (const symbol of file.symbols) {
-      const symbolName = symbol.name.toLowerCase();
-      for (const term of terms) {
-        if (symbolName === term) {
-          score += 16;
-          matchedSymbols.push(symbol);
-          reasons.push(`symbol ${symbol.name} (${symbol.kind}) matches "${term}"`);
-          break;
+      for (const term of names) {
+        const match = matchSymbolTerm(symbol, term);
+        if (!match) {
+          continue;
         }
-        if (symbolName.startsWith(term) && term.length >= 3) {
-          score += 7;
-          matchedSymbols.push(symbol);
-          reasons.push(`symbol ${symbol.name} (${symbol.kind}) starts with "${term}"`);
-          break;
+        // One symbol keeps only its best match: scoring every term separately would
+        // let a long query pile up points on a single coincidental name.
+        score += match.weight;
+        // A symbol named after the file it lives in is what the query is usually
+        // after: `adminAuth` among 27 `*admin*` routes should win.
+        if (fileTerms.has(term)) {
+          score += TERM_FILE_AFFINITY;
+          reasons.push(`symbol ${symbol.name} (${symbol.kind}) is named after its own file`);
+        } else {
+          reasons.push(`symbol ${symbol.name} (${symbol.kind}) ${describeMatch(match.kind)} "${term}"`);
         }
-        if (term.length >= 4 && symbolName.includes(term)) {
-          score += 4;
-          matchedSymbols.push(symbol);
-          reasons.push(`symbol ${symbol.name} (${symbol.kind}) contains "${term}"`);
-          break;
-        }
+        matchedSymbols.push(symbol);
+        break;
       }
-      const haystack = `${symbol.doc ?? ''} ${symbol.signature ?? ''}`.toLowerCase();
       for (const term of terms) {
-        if (term.length >= 4 && haystack.includes(term)) {
-          score += 1.5;
+        if (term.length >= 4 && `${symbol.doc ?? ''}`.toLowerCase().includes(term)) {
+          score += 1;
           break;
         }
       }
@@ -339,11 +353,17 @@ export class ContextRetriever {
       }
       const symbolKindMatch = file.symbols.find((symbol) => hint.symbolKinds.includes(symbol.kind));
       if (symbolKindMatch) {
-        score += 3;
+        score += SYMBOL_KIND_BONUS;
         if (!matchedSymbols.includes(symbolKindMatch)) {
           matchedSymbols.push(symbolKindMatch);
         }
         reasons.push(hint.reason);
+      }
+      // A symbol whose declaration kind is exactly what the query asked for
+      // ("route", "table", "component") should outrank one matched by name alone.
+      if (matchedSymbols.some((symbol) => hint.symbolKinds.includes(symbol.kind))) {
+        score += SYMBOL_KIND_BONUS;
+        reasons.push(`a matched symbol is a ${hint.symbolKinds.join('/')}`);
       }
     }
 
@@ -403,6 +423,35 @@ export class ContextRetriever {
     for (const seed of seeds) {
       byPath.set(seed.file.path, seed);
     }
+  }
+
+  /**
+   * Cheap phase-one item: the path, the matched symbol names and their line numbers,
+   * but no file content. Reading nine snippets to use the tenth is the single most
+   * expensive habit `bce_find_context` could encourage.
+   */
+  private toIndexItem(candidate: ScoredFile): ContextItem {
+    const matched = candidate.matchedSymbols.slice(0, 4);
+    return {
+      path: candidate.file.path,
+      language: candidate.file.language,
+      kind: candidate.file.kind,
+      score: Math.round(candidate.score * 10) / 10,
+      reasons: candidate.reasons,
+      symbols: matched.map((symbol) => ({
+        name: symbol.name,
+        kind: symbol.kind,
+        line: symbol.line,
+        endLine: symbol.endLine,
+        signature: symbol.signature,
+        confidence: symbol.confidence
+      })),
+      ranges: matched.length > 0
+        ? matched.map((symbol) => ({ start: symbol.line, end: symbol.line }))
+        : [{ start: 1, end: 1 }],
+      tests: candidate.file.tests,
+      confidence: candidate.file.confidence
+    };
   }
 
   private async toContextItem(candidate: ScoredFile, options: RetrieveOptions): Promise<ContextItem> {
@@ -483,6 +532,26 @@ export function tokenize(query: string): string[] {
 
 function dedupe(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+/** Turns a match kind into the phrase the `why:` line uses. */
+function describeMatch(kind: SymbolMatchKind): string {
+  switch (kind) {
+    case 'exact-name':
+      return 'is exactly';
+    case 'segment-name':
+      return 'has the word';
+    case 'qualified-name':
+      return 'contains the qualified part';
+    case 'prefix-name':
+      return 'starts with';
+    case 'substring-name':
+      return 'contains';
+    case 'signature':
+      return 'mentions in its signature';
+    case 'doc':
+      return 'mentions in its doc';
+  }
 }
 
 /** Compact rendering used as the tool payload and for token accounting. */

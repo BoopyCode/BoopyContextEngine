@@ -110,6 +110,10 @@ export function validateFindContextInput(input: unknown): ValidationResult<FindC
   if (!includeSnippets.ok) {
     return includeSnippets;
   }
+  const symbolsOnly = optionalBoolean(raw.symbolsOnly, 'symbolsOnly');
+  if (!symbolsOnly.ok) {
+    return symbolsOnly;
+  }
   return {
     ok: true,
     value: {
@@ -117,7 +121,8 @@ export function validateFindContextInput(input: unknown): ValidationResult<FindC
       scope: scope.value,
       maxTokens: maxTokens.value,
       includeTests: includeTests.value,
-      includeSnippets: includeSnippets.value
+      includeSnippets: includeSnippets.value,
+      symbolsOnly: symbolsOnly.value
     }
   };
 }

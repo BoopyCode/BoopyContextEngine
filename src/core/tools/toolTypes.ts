@@ -9,6 +9,8 @@ export interface FindContextInput {
   maxTokens?: number;
   includeTests?: boolean;
   includeSnippets?: boolean;
+  /** Phase-one lookup: ranked `path:line` targets without code bodies. */
+  symbolsOnly?: boolean;
 }
 
 export interface FileContextInput {

@@ -8,6 +8,16 @@ import { describeScope } from '../retrieve/contextRetriever';
 export interface ToolPayload {
   text: string;
   estimatedTokens: number;
+  /**
+   * Retrieval outcome, when the tool ranks hits. The usage report needs this to
+   * separate "saved tokens" from "answered the question": a query that returns
+   * nothing saves everything and helps nobody.
+   */
+  quality?: {
+    hits: number;
+    truncated: boolean;
+    dirty: boolean;
+  };
 }
 
 const DATABASE_FOCUS = new Set(['database', 'db', 'schema', 'table', 'tables', 'sql', 'migration', 'migrations', 'model', 'models']);
@@ -164,20 +174,34 @@ export async function runProjectOverview(ws: WorkspaceIntelligence, input: Proje
 export async function runFindContext(ws: WorkspaceIntelligence, input: FindContextInput): Promise<ToolPayload> {
   const estimator = defaultTokenEstimator;
   const maxTokens = clampTokenBudget(input.maxTokens, ws.config.tokenBudget);
+  const symbolsOnly = input.symbolsOnly === true;
   const recent = await ws.recentChanges();
   const { bundle, fromCache } = await ws.retrieveCached({
     query: input.query,
     scope: input.scope,
     maxTokens,
     includeTests: input.includeTests ?? true,
-    includeSnippets: input.includeSnippets ?? true,
+    includeSnippets: symbolsOnly ? false : input.includeSnippets ?? true,
+    symbolsOnly,
     maxResults: ws.config.maxSearchResults,
     snippetLines: ws.config.snippetLines,
     recentPaths: recent.available ? recent.changedPaths : [],
     entryPoints: ws.getMap().entryPoints
   });
   const freshness = ws.getFreshness();
+  const coverage = ws.impactCoverage();
   const lines: string[] = [renderBundle(bundle, freshness)];
+  lines.push('');
+  lines.push(
+    `index scope: ${ws.index.size} file(s) indexed, ${ws.index.getIgnored().length} ignored (see bce_get_project_overview for the ignored reasons)`
+  );
+  lines.push(
+    `coverage: ${coverage.linkedPercent}% of internal imports linked ` +
+      `(${coverage.unresolvedInternalImports}/${coverage.internalImports} unresolved in ${coverage.filesWithUnresolvedImports} file(s))` +
+      (bundle.items.length === 0 && coverage.unresolvedInternalImports > 0
+        ? ' - an empty result here is NOT proof of absence: a file the parser could not link is invisible to this search.'
+        : '')
+  );
   lines.push('');
   lines.push(
     `provenance: ${fromCache ? 'served from the local context cache' : 'computed now'}; recent-change signal: ${
@@ -187,11 +211,20 @@ export async function runFindContext(ws: WorkspaceIntelligence, input: FindConte
   lines.push(
     'next: open only the listed ranges. Do not attach or paste whole files - that duplicates this context and costs extra tokens. Use bce_get_file_context for an exact symbol body.'
   );
+  if (symbolsOnly) {
+    lines.push(
+      'mode: symbolsOnly (phase one). No code bodies were read. Pick a target above and request it with bce_get_file_context - do not read whole files to compensate.'
+    );
+  }
   lines.push(
     `token numbers are BCE estimates (${bundle.estimatorMethod}), not the model provider's billed counts.`
   );
   const text = lines.join('\n');
-  return { text, estimatedTokens: estimator.estimate(text) };
+  return {
+    text,
+    estimatedTokens: estimator.estimate(text),
+    quality: { hits: bundle.items.length, truncated: bundle.truncated, dirty: bundle.dirtyCount > 0 }
+  };
 }
 
 export async function runFileContext(ws: WorkspaceIntelligence, input: FileContextInput): Promise<ToolPayload> {

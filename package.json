@@ -2,7 +2,7 @@
   "name": "boopy-context-engine",
   "displayName": "Boopy Context Engine (BCE)",
   "description": "Local project indexing, project map and token-efficient context tools for GitHub Copilot Agent mode. Works fully offline, no paid AI API required.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "BoopyCode",
   "author": {
     "name": "BoopyCode"
@@ -123,6 +123,10 @@
             "includeSnippets": {
               "type": "boolean",
               "description": "Include short code snippets for the top hits. Defaults to true. Set to false when you only need paths and line numbers."
+            },
+            "symbolsOnly": {
+              "type": "boolean",
+              "description": "Phase-one mode: return a cheap ranked index of path:line targets, matched symbol names and reasons, but no code bodies. Use it to orient in an unfamiliar area, then read the one or two targets you picked with bce_get_file_context. It ranks several times more candidates than snippets mode for the same budget, so prefer it when you expect to need more than one lookup."
             }
           },
           "required": [

@@ -1,4 +1,4 @@
-import { StoreFs } from '../io/storeFs';
+﻿import { StoreFs } from '../io/storeFs';
 
 export const USAGE_LOG_FILE = 'usage.jsonl';
 
@@ -24,6 +24,12 @@ export interface UsageRecord {
   /** Files the tool looked at before ranking. */
   candidateFiles?: number;
   durationMs: number;
+  /** Ranked hits that survived the token budget. 0 means the query found nothing. */
+  hits?: number;
+  /** True when the token budget cut the result short. */
+  truncated?: boolean;
+  /** True when snippets came from an unsaved editor buffer. */
+  dirty?: boolean;
   error?: boolean;
   /** Why the call failed; without it a failed entry in the log is only a red zero. */
   reason?: string;
@@ -36,9 +42,18 @@ export interface UsageTotals {
   callsWithBaseline: number;
   returnedTokens: number;
   baselineTokens: number;
-  /** baselineTokens - returnedTokens, floored at 0. */
+  /**
+   * Smallest per-call baseline multiplied by the call count. This is the low end of
+   * a fair comparison: a naive agent that read only the *cheapest* matching file each
+   * time would have spent at least this much. `baselineTokens` is the high end.
+   */
+  baselineTokensLowerBound: number;  /** baselineTokens - returnedTokens, floored at 0. */
   savedTokens: number;
+  /** Worst-case saving, computed from the lower bound. */
+  savedTokensLowerBound: number;
   savedPercent: number;
+  /** Share of the naive baseline the tools actually returned, 0-100. */
+  returnedPercent: number;
   firstAt: number;
   lastAt: number;
 }
@@ -55,6 +70,24 @@ export interface UsageSummary {
   perTool: { tool: string; totals: UsageTotals }[];
   /** Newest first. */
   recent: UsageRecord[];
+  /**
+   * How useful the calls were. Optional so a summary built by hand (older tests,
+   * cached reports) still renders; it is recomputed from `recent` when absent.
+   */
+  quality?: UsageQuality;
+}
+
+export interface UsageQuality {
+  /** Calls that returned no ranked hit at all. */
+  empty: number;
+  /** Calls whose result was cut off by the token budget. */
+  truncated: number;
+  /** Calls that returned at least one hit. */
+  productive: number;
+  /** Calls whose snippets came from an unsaved editor buffer. */
+  dirty: number;
+  /** returnedTokens / baselineTokens, 0-100. */
+  followUpRatio: number;
 }
 
 export interface UsageLedgerDeps {
@@ -149,7 +182,8 @@ export class UsageLedger {
       perTool: [...byTool.entries()]
         .map(([tool, records]) => ({ tool, totals: computeTotals(records) }))
         .sort((a, b) => b.totals.calls - a.totals.calls),
-      recent: [...this.records].reverse()
+      recent: [...this.records].reverse(),
+      quality: computeQuality(this.records, this.totals())
     };
   }
 
@@ -204,11 +238,15 @@ export function computeTotals(records: readonly UsageRecord[]): UsageTotals {
     callsWithBaseline: 0,
     returnedTokens: 0,
     baselineTokens: 0,
+    baselineTokensLowerBound: 0,
     savedTokens: 0,
+    savedTokensLowerBound: 0,
     savedPercent: 0,
+    returnedPercent: 0,
     firstAt: 0,
     lastAt: 0
   };
+  const baselines: number[] = [];
   for (const record of records) {
     totals.calls += 1;
     if (record.error) {
@@ -218,6 +256,7 @@ export function computeTotals(records: readonly UsageRecord[]): UsageTotals {
     if (typeof record.baselineTokens === 'number') {
       totals.callsWithBaseline += 1;
       totals.baselineTokens += record.baselineTokens;
+      baselines.push(record.baselineTokens);
     }
     totals.firstAt = totals.firstAt === 0 ? record.at : Math.min(totals.firstAt, record.at);
     totals.lastAt = Math.max(totals.lastAt, record.at);
@@ -225,7 +264,42 @@ export function computeTotals(records: readonly UsageRecord[]): UsageTotals {
   totals.savedTokens = Math.max(0, totals.baselineTokens - totals.returnedTokens);
   totals.savedPercent =
     totals.baselineTokens === 0 ? 0 : Math.round(((totals.baselineTokens - totals.returnedTokens) / totals.baselineTokens) * 1000) / 10;
+  totals.returnedPercent =
+    totals.baselineTokens === 0 ? 0 : Math.round((totals.returnedTokens / totals.baselineTokens) * 1000) / 10;
+  // The cheapest plausible naive read is the smallest matching file, repeated for every
+  // measured call. A single call therefore has lower === upper; several calls whose
+  // baselines differ get an honest spread instead of one authoritative looking number.
+  const cheapest = baselines.length === 0 ? 0 : Math.min(...baselines);
+  totals.baselineTokensLowerBound = cheapest * baselines.length;
+  totals.savedTokensLowerBound = Math.max(0, totals.baselineTokensLowerBound - totals.returnedTokens);
   return totals;
+}
+
+/**
+ * Counts the calls that carried a retrieval outcome, so the report can say whether the
+ * tools actually answered - something token savings alone cannot express.
+ */
+export function computeQuality(records: readonly UsageRecord[], totals: UsageTotals): UsageQuality {
+  const quality: UsageQuality = { empty: 0, truncated: 0, productive: 0, dirty: 0, followUpRatio: totals.returnedPercent };
+  for (const record of records) {
+    if (record.error) {
+      continue;
+    }
+    if (typeof record.hits === 'number') {
+      if (record.hits === 0) {
+        quality.empty += 1;
+      } else {
+        quality.productive += 1;
+      }
+    }
+    if (record.truncated) {
+      quality.truncated += 1;
+    }
+    if (record.dirty) {
+      quality.dirty += 1;
+    }
+  }
+  return quality;
 }
 
 export function parseUsageLog(text: string): UsageRecord[] {
@@ -248,6 +322,9 @@ export function parseUsageLog(text: string): UsageRecord[] {
           baselineFiles: typeof parsed.baselineFiles === 'number' ? parsed.baselineFiles : undefined,
           candidateFiles: typeof parsed.candidateFiles === 'number' ? parsed.candidateFiles : undefined,
           durationMs: numberOr(parsed.durationMs, 0),
+          hits: typeof parsed.hits === 'number' ? parsed.hits : undefined,
+          truncated: parsed.truncated === true ? true : undefined,
+          dirty: parsed.dirty === true ? true : undefined,
           error: parsed.error === true ? true : undefined,
           reason: typeof parsed.reason === 'string' ? parsed.reason : undefined
         });
@@ -279,6 +356,7 @@ function formatCall(record: UsageRecord): string {
 export function renderUsageReport(summary: UsageSummary): string {
   const lines: string[] = [];
   const totals = summary.totals;
+  const quality = summary.quality ?? computeQuality(summary.recent, totals);
   lines.push(`# BCE usage log - ${summary.rootName}`);
   lines.push('');
   lines.push(`entries: ${totals.calls}${totals.calls > 0 ? ` (first ${formatTime(totals.firstAt)}, last ${formatTime(totals.lastAt)})` : ''}`);
@@ -298,9 +376,21 @@ export function renderUsageReport(summary: UsageSummary): string {
   lines.push(`| tool calls | ${totals.calls}${totals.errors > 0 ? ` (${totals.errors} failed)` : ''} |`);
   lines.push(`| estimated tokens returned by BCE | ~${totals.returnedTokens} |`);
   lines.push(
-    `| estimated tokens of the naive alternative | ~${totals.baselineTokens} (over ${totals.callsWithBaseline} call(s) where it can be defined) |`
+    `| estimated tokens of the naive alternative | ~${totals.baselineTokens} **upper bound** (over ${totals.callsWithBaseline} call(s) where it can be defined) |`
   );
-  lines.push(`| estimated tokens avoided | ~${totals.savedTokens} (${totals.savedPercent}% smaller) |`);
+  if (totals.callsWithBaseline > 1 && totals.baselineTokensLowerBound !== totals.baselineTokens) {
+    lines.push(
+      `| naive alternative, low end | ~${totals.baselineTokensLowerBound} (reading only the cheapest matching file per call) |`
+    );
+    lines.push(
+      `| estimated tokens avoided | ~${totals.savedTokensLowerBound} to ~${totals.savedTokens} (${totals.savedPercent}% smaller against the upper bound) |`
+    );
+  } else {
+    lines.push(`| estimated tokens avoided | ~${totals.savedTokens} (${totals.savedPercent}% smaller) |`);
+  }
+  lines.push(
+    `| share of the upper bound actually returned | ${totals.returnedPercent}% (the remaining ${totals.savedPercent}% is what was not read) |`
+  );
   lines.push('');
 
   if (summary.perTool.length > 0) {
@@ -315,6 +405,28 @@ export function renderUsageReport(summary: UsageSummary): string {
         } |`
       );
     }
+    lines.push('');
+  }
+
+  if (summary.recent.length > 0) {
+    lines.push('## Retrieval quality this session');
+    lines.push('');
+    lines.push('Token savings say nothing about whether the answer was usable. These numbers do:');
+    lines.push('');
+    lines.push('| signal | value | what it means |');
+    lines.push('| --- | --- | --- |');
+    lines.push(
+      `| calls that returned nothing | ${quality.empty} | a query whose terms matched no indexed file - the agent had to rephrase |`
+    );
+    lines.push(
+      `| calls that hit the token budget | ${quality.truncated} | results were cut off, so more than one follow-up call is likely |`
+    );
+    lines.push(
+      `| calls answered from a non-empty result | ${quality.productive} | the tool returned at least one ranked hit |`
+    );
+    lines.push(
+      `| follow-up ratio | ${quality.followUpRatio} | returned tokens per baseline token; lower is more efficient, but only a smaller query makes it *more* accurate |`
+    );
     lines.push('');
   }
 
@@ -339,7 +451,13 @@ export function renderUsageReport(summary: UsageSummary): string {
     '* Token numbers are **local estimates** from the character based estimator, not the model provider\'s billing. An extension cannot see the provider account.'
   );
   lines.push(
-    '* The naive baseline is an upper bound: reading every file whose path or symbol names match a query term. A real agent may read fewer files (and miss the answer) or more (and waste tokens).'
+    '* **The naive baseline is an upper bound, not a measurement.** It counts *every* file whose path or symbol names match a query term. A real agent might read fewer files - and pick the wrong one - or read more. The low end of the range above is the cheapest plausible read for the same work.'
+  );
+  lines.push(
+    '* The headline saving is therefore a **range**, and its top end is the naive baseline. A single number such as "97% smaller" is the best case, not the typical case.'
+  );
+  lines.push(
+    '* Token savings are not a quality signal. A query that returns nothing saves 100% of its tokens and answers nothing: read the retrieval quality table above before quoting a saving.'
   );
   lines.push(
     '* Only `bce_find_context` and `bce_get_file_context` have a baseline; for the other tools the table shows the returned size only.'

@@ -1,4 +1,47 @@
 # Changelog
+## [0.1.9] - 2026-10-16
+
+Ranking, honest numbers, coverage and a two-phase lookup. Each change comes from a measured
+problem in a real session, not from a wish list.
+
+### Added
+
+* **`bce_find_context` gained `symbolsOnly` (two-phase lookup).** It returns a ranked `path:line`
+  index with matched symbol names and `why:` reasons but no code bodies, and it ranks several times
+  more candidates than snippet mode for the same budget. The habit it enables - list first, read one
+  body second - removes the largest remaining waste, paying for nine snippets to use the tenth.
+* **The usage report now carries a range and a retrieval quality table.** The saving is printed as
+  `~low to ~high` where the high end is labelled **upper bound**, plus lines, truncated calls and a
+  follow-up ratio. Token savings are explicitly *not* a quality signal: a query returning nothing
+  saves everything.
+* **`coverage:` appears in the `bce_find_context` answer and in `bce_get_status`,** not only in an
+  impact report. Below 100% linked imports an empty result is a hole in the graph, and the answer
+  now says so instead of leaving the agent to interpret silence.
+
+### Fixed
+
+* **Symbol ranking treated `contains` almost as strongly as `equals`.** In the reported case a query
+  for one `adminAuth` was buried under 27 routes that merely contained the word *admin*. Matching is
+  now weighted: exact name (16) > whole identifier word (13) > qualified word (12) > prefix (7) >
+  substring (3) > signature (1.5) > doc (0.5), and a symbol **named after the file it lives in** gets
+  a further +5. Query words like `route`, `table` or `component` now *reinforce* a matched symbol's
+  declared kind (+3) instead of only adding to the file.
+* **A plural in a symbol was invisible to word matching.** `splitIdentifier` keeps the original
+  casing and the plural, so `userReports` matched the term "report" only as a weak substring. Word
+  comparison now lowercases both sides and ignores a simple trailing plural.
+* **The honest-numbers lower bound was computed as the sum of the baselines,** which is just the
+  upper bound again. It is now the cheapest matching file repeated for every measured call, so two
+  calls with different footprints produce a real spread.
+
+### Tests
+
+* `test/symbolRanking.test.ts` pins the weight ordering, the word-vs-substring gap and the plural
+  rule - the exact cases the old scoring got wrong.
+* `test/retrievalQuality.test.ts` covers `symbolsOnly` (no code bodies, more candidates, lower
+  tokens), the coverage caveat on an empty result, the reported range, the "not a quality signal"
+  wording, and the empty/productive call counters.
+* 192 tests pass; `npm run typecheck` and `npm run compile` are clean.
+
 ## [0.1.8] - 2026-10-16
 
 The contributed instructions now say *when* they apply, not only what they say.

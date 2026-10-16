@@ -15,6 +15,10 @@ Order of operations:
 1. Touching an unfamiliar area → `bceProjectOverview` (add `focus` for the area).
 2. Looking for code by concept, feature or name → `bceFindContext`. Name the
    symbol, route, table or endpoint and add `scope` when you know the directory.
+   - Expecting to need more than one lookup → pass `symbolsOnly: true` first. It
+     returns a cheap ranked `path:line` index with no code bodies and ranks several
+     times more candidates for the same budget; read the one or two targets you
+     picked with `bceFileContext`. This two-phase habit is the single biggest saving.
 3. You know the file and need one symbol → `bceFileContext` with `path` + `symbol`.
 4. Before renaming, moving, deleting or changing a signature → `bceImpact`.
    Qualify the symbol as `Class::method` when the bare name is ambiguous.
@@ -26,10 +30,23 @@ Order of operations:
 - `coverage:` says how much of the import graph the index could link. Below 100 %,
   an empty reference or dependent list is a hole in the index, not proof that
   nothing uses the code. Confirm with a text search before acting.
+- In a `why:` line, "is exactly" and "is named after its own file" are strong
+  signals; "contains" is the weakest and deserves an open file before you trust it.
 - `NOT ANALYSED` means the requested target was not resolved and no lists were
   produced on purpose. It never means "no dependents".
 - Sections labelled `heuristic` or `probable` are unverified leads: open the files.
 - Prefer several narrow calls over one huge one; the budgets are per response.
+
+## Quote savings honestly
+
+The usage report gives a **range**, because the top end is a naive upper bound
+(reading *every* file whose path or symbol names match the query) - not a
+measurement. When you report a saving:
+
+- quote the range, not the single highest percentage;
+- say the top end is an upper bound;
+- check the retrieval quality table first: a query that returns nothing saves
+  100 % of its tokens and answers nothing.
 
 Never work around a BCE refusal (a secret file, or a path outside the workspace)
 by pasting the contents into the chat.

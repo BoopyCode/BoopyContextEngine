@@ -13,7 +13,13 @@ Use the local BCE tools before reading files, and keep the context small.
    repository with grep first, and do not read files "just in case".
    - narrow it with `scope` when you already know the area,
    - reduce `maxTokens` for exploration, raise it when writing documentation,
-   - set `includeSnippets: false` when you only need paths and line numbers.
+   - set `includeSnippets: false` when you only need paths and line numbers,
+   - set `symbolsOnly: true` for an unfamiliar area: it returns a cheap ranked list of
+     `path:line` targets with no code bodies, ranks several times more candidates for the
+     same budget, and you then read the one or two you picked with `bce_get_file_context`.
+     That two-phase habit is what keeps a broad search from costing a whole file's context.
+   - read the `coverage:` line in the answer. Below 100% linked imports, an empty result is a
+     hole in the import graph, not proof that the code does not exist.
 3. Read only what you still need with `bce_get_file_context`
    (`path` + `symbol`, or an explicit `startLine`/`endLine` range).
 4. Before changing shared code, call `bce_explain_impact` and treat the
@@ -26,6 +32,12 @@ Rules:
 
 - Never claim more than the data says: parser results are labelled `exact` or `heuristic`, and
   token numbers are estimates, not the model provider's billed counts.
+- When you quote the token saving from the usage report, quote it as a **range** and say that its
+  top end is a naive upper bound. A single "97% smaller" figure is the best case, not the measured
+  case, and a query that returns nothing saves 100% of its tokens while answering nothing - check
+  the retrieval quality table before presenting a saving as a win.
+- Do not treat a ranked hit as proof. Open the listed ranges before editing, especially when the
+  hit's `why:` line says "contains" rather than "is named after its own file".
 - Open only the ranges the tools returned. Do not attach or paste whole files "for safety" - that
   duplicates the context you just paid for.
 - If a file has unsaved changes, the tool output says so (`UNSAVED editor buffer`) and its line

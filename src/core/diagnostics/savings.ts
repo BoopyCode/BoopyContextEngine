@@ -8,6 +8,12 @@ export interface UsageSavings {
   baselineTokens?: number;
   baselineFiles?: number;
   candidateFiles?: number;
+  /** Ranked hits that survived the token budget; 0 means the query found nothing. */
+  hits?: number;
+  /** True when the token budget cut the result short. */
+  truncated?: boolean;
+  /** True when snippets came from an unsaved editor buffer. */
+  dirty?: boolean;
 }
 
 /**
@@ -20,7 +26,12 @@ export interface UsageSavings {
  * * everything else - no baseline, because there is no honest "without BCE" equivalent
  *   (the overview, impact and related-tests tools replace searching plus reading).
  */
-export function estimateUsageSavings(ws: WorkspaceIntelligence, tool: BceToolName, input: unknown): UsageSavings {
+export function estimateUsageSavings(
+  ws: WorkspaceIntelligence,
+  tool: BceToolName,
+  input: unknown,
+  quality?: { hits: number; truncated: boolean; dirty: boolean }
+): UsageSavings {
   const raw = (input ?? {}) as Record<string, unknown>;
 
   if (tool === 'bce_find_context') {
@@ -30,7 +41,10 @@ export function estimateUsageSavings(ws: WorkspaceIntelligence, tool: BceToolNam
       label: query,
       baselineTokens: baseline.estimatedTokens,
       baselineFiles: baseline.files,
-      candidateFiles: ws.index.size
+      candidateFiles: ws.index.size,
+      hits: quality?.hits,
+      truncated: quality?.truncated,
+      dirty: quality?.dirty
     };
   }
 

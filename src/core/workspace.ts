@@ -311,6 +311,7 @@ export class WorkspaceIntelligence {
         maxTokens: options.maxTokens,
         includeTests: options.includeTests,
         includeSnippets: options.includeSnippets,
+        symbolsOnly: options.symbolsOnly,
         maxResults: options.maxResults,
         snippetLines: options.snippetLines,
         // Unsaved editor buffers change snippets without changing the index version.
@@ -550,12 +551,12 @@ export class WorkspaceIntelligence {
   /**
    * Import-graph health of the current index.
    *
-   * Impact analysis is only as good as the graph behind it, so the numbers travel
-   * with every report. Without them an empty "no dependents" list caused by an
-   * unresolved import is indistinguishable from a real finding - which is exactly
-   * how a broken index loses the trust of the agent reading it.
+   * Every surface that shows ranked hits or dependents reports this: without it an
+   * empty result caused by an unresolved import is indistinguishable from a real
+   * finding - which is exactly how a broken index loses the trust of the agent
+   * reading it.
    */
-  private impactCoverage(): ImpactCoverage {
+  impactCoverage(): ImpactCoverage {
     const namespaceRoots = this.index.declaredNamespaceRoots();
     let internalImports = 0;
     let unresolvedInternalImports = 0;
@@ -707,6 +708,14 @@ export class WorkspaceIntelligence {
     );
     lines.push(
       `safety: ${this.deps.ignore.respectGitignore ? '.gitignore respected' : '.gitignore ignored by setting'}, secrets and binary files always blocked, symlinks ${this.deps.config.followSymlinks ? 'followed inside the workspace' : 'not followed'}`
+    );
+    const coverage = this.impactCoverage();
+    lines.push(
+      `coverage: ${coverage.linkedPercent}% of internal imports linked ` +
+        `(${coverage.unresolvedInternalImports}/${coverage.internalImports} unresolved in ${coverage.filesWithUnresolvedImports} file(s))` +
+        (coverage.linkedPercent < 100
+          ? ' - empty result lists are holes in the graph, not proof of absence'
+          : '')
     );
     const dirty = this.dirtyDocuments();
     if (dirty.length > 0) {

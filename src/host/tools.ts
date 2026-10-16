@@ -80,7 +80,7 @@ class BceTool<T> implements vscode.LanguageModelTool<T> {
       const payload = await this.definition.run(session.intelligence, validation.value);
       const durationMs = Date.now() - startedAt;
       session.metrics.recordToolCall(this.definition.name, payload.text.length, payload.estimatedTokens, durationMs);
-      const savings = estimateUsageSavings(session.intelligence, this.definition.name, validation.value);
+      const savings = estimateUsageSavings(session.intelligence, this.definition.name, validation.value, payload.quality);
       session.usage?.record({
         tool: this.definition.name,
         label: savings.label,
@@ -89,6 +89,9 @@ class BceTool<T> implements vscode.LanguageModelTool<T> {
         baselineTokens: savings.baselineTokens,
         baselineFiles: savings.baselineFiles,
         candidateFiles: savings.candidateFiles,
+        hits: savings.hits,
+        truncated: savings.truncated,
+        dirty: savings.dirty,
         durationMs
       });
       this.logger.log('debug', `${this.definition.name}: ${payload.text.length} chars, ~${payload.estimatedTokens} tokens, ${durationMs} ms`);
