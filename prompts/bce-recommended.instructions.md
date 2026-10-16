@@ -1,6 +1,7 @@
 ---
 name: 'Boopy Context Engine (BCE)'
-description: 'Prefer the local BCE tools over repository-wide greps when locating code, reading one symbol, or checking what depends on a change. Also explains how to read their output honestly.'
+description: 'Use the local BCE tools before grepping the repository. Covers when each tool applies, and how to read coverage and NOT ANALYSED honestly.'
+applyTo: '**'
 ---
 
 # Reach for BCE before you grep

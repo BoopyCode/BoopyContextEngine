@@ -1,4 +1,27 @@
 # Changelog
+## [0.1.8] - 2026-10-16
+
+The contributed instructions now say *when* they apply, not only what they say.
+
+### Fixed
+
+* **`prompts/bce-recommended.instructions.md` gained `applyTo: '**'`.** Without it the file was
+  discovered - VS Code does sync it into the customization plugin, as
+  `rules/bce-recommended.instructions.md` - but it was only reachable when the model chose to load it
+  on demand from its `description`. That is the weakest of the three activation paths, and in practice
+  an agent that had not been told about BCE went straight to `grep`: measured over a full day of work
+  on a real repository, the extension logged **zero** self-initiated tool calls. `applyTo` makes the
+  file attach to every file the agent touches, which is the channel that is documented to work.
+* `test/extension.test.ts` now fails when a contributed instructions file has no `applyTo`, so this
+  specific regression cannot come back unnoticed.
+
+### Known limitation
+
+* Extension-contributed instructions are the least documented of the three paths (project files under
+  `.github/instructions`, `AGENTS.md`, and contributed files). Where the outcome matters, add the same
+  guidance to `.github/instructions/` in the project as well - the two are additive and a duplicate is
+  cheaper than an agent that never learns the tools exist.
+
 
 All notable changes to the Boopy Context Engine (BCE) are documented here.
 

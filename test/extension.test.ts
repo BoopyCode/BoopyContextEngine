@@ -98,6 +98,11 @@ describe('extension activation', () => {
       const frontmatter = content.split('---')[1] ?? '';
       expect(frontmatter).toMatch(/^name:/m);
       expect(frontmatter).toMatch(/^description:/m);
+      // `applyTo` is what makes the file auto-attach. A contributed file without it
+      // is only reachable when the model decides to load it on demand, and the
+      // description alone competes with every other instruction in scope - which is
+      // how the file ends up in the customization plugin yet still not in the prompt.
+      expect(frontmatter).toMatch(/^applyTo:/m);
 
       // Tool names must be the camelCase reference names VS Code registers, not the
       // snake_case tool ids: a chat prompt only resolves the former.

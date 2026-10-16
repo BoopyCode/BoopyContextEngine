@@ -2,7 +2,7 @@
   "name": "boopy-context-engine",
   "displayName": "Boopy Context Engine (BCE)",
   "description": "Local project indexing, project map and token-efficient context tools for GitHub Copilot Agent mode. Works fully offline, no paid AI API required.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "BoopyCode",
   "author": {
     "name": "BoopyCode"
