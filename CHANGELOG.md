@@ -16,14 +16,14 @@ pre-ranked slices, let Copilot spend its tokens on the task.
 
 ### How much context BCE actually avoids
 
-Measured on the blog application in `blog/` (a static site that reads the public GitHub API
-and writes up repositories), with one tokenizer (tiktoken `cl100k_base`) and one price list
-for every row:
+Measured with one tokenizer (tiktoken `cl100k_base`) and one price list for every row, on a
+real workload: a static-site project of 112 files plus 12 repositories read from the public
+GitHub API.
 
-| step | prompt tokens | cost (DeepSeek V4 Flash list) | what happened |
+| step | prompt tokens | cost (DeepSeek V4 Flash list) | what an agent had to read |
 | --- | ---: | ---: | --- |
-| naive: an agent opens everything | 1,068,248 | $0.2350 | 112 project files + tree listings + 12 whole repositories |
-| with BCE | **8,013** | **$0.001763** | project overview, ranked hits, one exact symbol slice |
+| naive: open everything | 1,068,248 | $0.2350 | 112 project files + tree listings + 12 whole repositories |
+| with BCE | **8,013** | **$0.001763** | project overview, twelve ranked hits, one exact symbol slice |
 
 **99.2% of the naive context never had to be read.** That is not a compression ratio - it is
 1.06M tokens of files that were never opened. The nine BCE calls that replaced them returned
@@ -31,13 +31,10 @@ the project map, twelve ranked hits and one function body.
 
 Honest limits: the 12 remote repositories are priced from their GitHub-reported size
 (`size x 1024 / 3.6`), which is an estimate and the largest single contributor to the naive
-baseline (873,816 of the 1,068,248 tokens). The blog project itself (112 files) is measured
-exactly on disk. Nothing here measures answer quality - a cheaper context that omits the file
-the agent needed is not a saving, which is why the tools report hit counts and coverage
-alongside their token estimates.
-
-Reproduce: `node blog/src/build.mjs 4` builds the blog from live GitHub, `npx tsx
-blog/measure/run.mjs` runs the measurement. Numbers in `blog/measure/result.json`.
+baseline (873,816 of the 1,068,248 tokens). The 112 project files are measured exactly on
+disk. Nothing here measures answer quality - a cheaper context that omits the file the agent
+needed is not a saving, which is why the tools report hit counts and coverage alongside
+their token estimates.
 
 ## [0.1.9] - 2026-10-16
 

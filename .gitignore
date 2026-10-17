@@ -16,21 +16,8 @@ coverage/
 copilot-instructions.md
 .agent-notes/
 
-# Local Headroom CLI install used to test the optional payload compaction.
-.headroom-venv/
-
-# Local A/B test outputs: kept on the machine that ran the benchmark, not published.
-ab-test/runs/
-
-# Local secrets: provider API keys for the A/B harness. Never commit this file.
+# Local secrets. Never commit this file.
 .env
 .env.*
 !.env.example
 
-# Generated blog output and scratch space.
-blog/public/
-blog/measure/.work/
-
-# Headroom research (not part of the extension, not shipped).
-research/ab-test/runs/
-research/.headroom-venv/
