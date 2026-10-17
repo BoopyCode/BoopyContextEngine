@@ -190,8 +190,7 @@ export function registerCommands(context: vscode.ExtensionContext, sessions: Ses
       void vscode.window.showInformationMessage('BCE: both cache layers were cleared. The index itself was kept; use "BCE: Rebuild Index" to re-parse everything.');
     }),
 
-    vscode.commands.registerCommand('bce.showUsageReport', async () => {
-      const session = requireSession();
+    vscode.commands.registerCommand('bce.showUsageReport', async () => {      const session = requireSession();
       if (!session) {
         return;
       }
@@ -203,6 +202,10 @@ export function registerCommands(context: vscode.ExtensionContext, sessions: Ses
       const document = await vscode.workspace.openTextDocument({ content: report, language: 'markdown' });
       await vscode.window.showTextDocument(document, { preview: true });
     }),
+
+
+
+
 
     vscode.commands.registerCommand('bce.resetUsageLog', async () => {
       const session = requireSession();

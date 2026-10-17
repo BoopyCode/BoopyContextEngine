@@ -13,3 +13,12 @@ vitest.config.ts
 tsconfig.json
 .gitignore
 .gitattributes
+# Not part of the extension: the blog example, the context measurement, and the
+# Headroom research notes.
+blog/**
+research/**
+.env
+.env.*
+ab-test/**
+.headroom-venv/**
+.venv/**

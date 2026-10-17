@@ -133,6 +133,7 @@ class BceTool<T> implements vscode.LanguageModelTool<T> {
     }
     return this.sessions.default();
   }
+
 }
 
 function toolSettingName(name: BceToolName): string {

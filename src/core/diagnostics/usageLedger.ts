@@ -77,6 +77,7 @@ export interface UsageSummary {
   quality?: UsageQuality;
 }
 
+
 export interface UsageQuality {
   /** Calls that returned no ranked hit at all. */
   empty: number;
@@ -391,8 +392,6 @@ export function renderUsageReport(summary: UsageSummary): string {
   lines.push(
     `| share of the upper bound actually returned | ${totals.returnedPercent}% (the remaining ${totals.savedPercent}% is what was not read) |`
   );
-  lines.push('');
-
   if (summary.perTool.length > 0) {
     lines.push('## Per tool');
     lines.push('');

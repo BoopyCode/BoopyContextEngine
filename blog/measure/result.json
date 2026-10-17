@@ -1,0 +1,158 @@
+{
+  "at": "2026-10-17T18:33:12.873Z",
+  "github": {
+    "repositories": 12,
+    "bytes": 130780
+  },
+  "naive": {
+    "tokens": 1068248,
+    "listingTokens": 841,
+    "contentTokens": 193591,
+    "remoteTokens": 873816,
+    "blogFiles": 112,
+    "remoteRepositories": 12
+  },
+  "bce": {
+    "tokens": 8013,
+    "calls": [
+      {
+        "name": "bce_get_project_overview",
+        "tokens": 875,
+        "chars": 3330
+      },
+      {
+        "name": "bce_find_context",
+        "tokens": 2157,
+        "chars": 8215,
+        "hits": 12
+      },
+      {
+        "name": "bce_get_file_context",
+        "tokens": 304,
+        "chars": 1061
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "firecrawl/firecrawl",
+        "tokens": 251,
+        "chars": 955,
+        "hits": 0
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "langchain-ai/langchain",
+        "tokens": 251,
+        "chars": 955,
+        "hits": 0
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "morluto/rea",
+        "tokens": 1386,
+        "chars": 5278,
+        "hits": 6
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "NousResearch/hermes-agent",
+        "tokens": 1381,
+        "chars": 5258,
+        "hits": 8
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "OpenHands/OpenHands",
+        "tokens": 1157,
+        "chars": 4406,
+        "hits": 6
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "puppeteer/puppeteer",
+        "tokens": 251,
+        "chars": 955,
+        "hits": 0
+      }
+    ]
+  },
+  "headroom": {
+    "tokens": 5890,
+    "calls": [
+      {
+        "name": "bce_get_project_overview",
+        "before": 875,
+        "after": 598,
+        "changed": true,
+        "ms": 7634
+      },
+      {
+        "name": "bce_find_context",
+        "before": 2157,
+        "after": 1496,
+        "changed": true,
+        "ms": 14772
+      },
+      {
+        "name": "bce_get_file_context",
+        "before": 304,
+        "after": 295,
+        "changed": true,
+        "ms": 3586
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "firecrawl/firecrawl",
+        "before": 251,
+        "after": 210,
+        "changed": true,
+        "ms": 3406
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "langchain-ai/langchain",
+        "before": 251,
+        "after": 210,
+        "changed": true,
+        "ms": 3614
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "morluto/rea",
+        "before": 1386,
+        "after": 1005,
+        "changed": true,
+        "ms": 11522
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "NousResearch/hermes-agent",
+        "before": 1381,
+        "after": 1029,
+        "changed": true,
+        "ms": 12926
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "OpenHands/OpenHands",
+        "before": 1157,
+        "after": 836,
+        "changed": true,
+        "ms": 6330
+      },
+      {
+        "name": "bce_find_context",
+        "extra": "puppeteer/puppeteer",
+        "before": 251,
+        "after": 211,
+        "changed": true,
+        "ms": 2911
+      }
+    ],
+    "fair": {
+      "before": 6712,
+      "after": 4212,
+      "changed": true,
+      "ms": 1774
+    }
+  }
+}

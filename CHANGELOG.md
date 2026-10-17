@@ -1,48 +1,43 @@
 # Changelog
-## [0.1.10] - 2026-10-16
+## [0.2.0] - 2026-10-17
 
-Ranking that cannot be bought by volume, a phase-one list that is actually cheap, and one fewer
-place where a saving can be misread as a measurement. Measured on a real 363-file repository where
-the previous release returned a 16 KB answer that had to be spilled to a file.
+**Boopy Context Engine only.** This release contains no third-party compression layer and
+makes no network calls. The pipeline is the one BCE always had: index locally, return small
+pre-ranked slices, let Copilot spend its tokens on the task.
 
-### Fixed
+### What changed
 
-* **A file with many symbols could win a query by volume alone.** `backend/public/index.php` holds
-  270 of the index's 3969 symbols, so almost any word matched something in it and the per-symbol
-  scores were summed without limit - the route table scored 554 and took first place, while the file
-  the query actually named (`AuditLogService`) sat at position 19. Extra matches in the same file now
-  carry **diminishing weight** (the first three keep full weight, then ×0.35 per match down to a 0.1
-  floor), so relevance beats sheer count. On the measured queries the named service moved
-  **#19 → #4** and the route table fell out of first place.
-* **Long natural-language queries were dominated by their most common words.** Every term now carries
-  a **rarity weight** (a term in ≥50% of files is worth 1, in <5% is worth 3.4), computed in one pass
-  over the index. "service" and "user" no longer drown out "audit" and "refund".
-* **A file matching several query words was not rewarded for breadth.** A file that answers *audit*
-  and *log* is a better target than one that answers only the frequent *service*, which a sum of
-  per-term scores cannot express. Matching two or more terms now adds a capped coverage bonus - and
-  only **name-level** matches count towards it, so a route table cannot buy breadth through words
-  buried in other people's signatures.
-* **`symbolsOnly` answers were as large as full context bundles.** `renderBundle` re-rendered every
-  item with the verbose `renderItem`, so the "cheap phase-one list" still printed `why:` and
-  `symbols:` blocks - 48 hits, 16 KB, written to a temp file instead of read. The bundle now carries
-  its **mode**, the phase-one list renders one compact line per hit, is capped at 24 items, and reads
-  no file bodies at all. Same measured queries: **16.1 KB → 5.0 KB (−69%)**, and the answer is in the
-  top few instead of buried.
-* **`bce_get_status` quoted the naive upper bound as a single number.** It printed
-  `estimated context avoided: ~1878965 token(s)`, which reads as a measurement of work avoided -
-  while the detailed report already prints a range and labels the high end an upper bound. The status
-  line now quotes the same range (`~low to ~high`), says **naive upper bound, not a measurement**, and
-  prints the productive/empty call counts next to it so a saving cannot be read without the quality
-  context.
+* **Tool dispatch is leaner.** Payload handling was collapsed back to one path
+  (_render -> measure -> return_). Every leftover hook, setting and code path from earlier
+  experiments is gone; `src/`, `test/` and `package.json` contain no external compression
+  dependency or configuration.
+* **198 tests, zero network.** The suite still needs no model API and no key.
+* **Benchmarked on a real GitHub workload.** See "How much context BCE actually avoids" below.
 
-### Tests
+### How much context BCE actually avoids
 
-* `test/ranking.test.ts` covers the decay curve, that a named file beats a word-matching file, that a
-  rare term outweighs a common one, that the phase-one list stays short and cheap, and that it renders
-  without `why:`/`code:` blocks.
-* `test/usage.test.ts` pins the honest status wording: the range, the "not a measurement" label and
-  the productive/empty pairing.
-* 198 tests pass; `npm run typecheck` is clean.
+Measured on the blog application in `blog/` (a static site that reads the public GitHub API
+and writes up repositories), with one tokenizer (tiktoken `cl100k_base`) and one price list
+for every row:
+
+| step | prompt tokens | cost (DeepSeek V4 Flash list) | what happened |
+| --- | ---: | ---: | --- |
+| naive: an agent opens everything | 1,068,248 | $0.2350 | 112 project files + tree listings + 12 whole repositories |
+| with BCE | **8,013** | **$0.001763** | project overview, ranked hits, one exact symbol slice |
+
+**99.2% of the naive context never had to be read.** That is not a compression ratio - it is
+1.06M tokens of files that were never opened. The nine BCE calls that replaced them returned
+the project map, twelve ranked hits and one function body.
+
+Honest limits: the 12 remote repositories are priced from their GitHub-reported size
+(`size x 1024 / 3.6`), which is an estimate and the largest single contributor to the naive
+baseline (873,816 of the 1,068,248 tokens). The blog project itself (112 files) is measured
+exactly on disk. Nothing here measures answer quality - a cheaper context that omits the file
+the agent needed is not a saving, which is why the tools report hit counts and coverage
+alongside their token estimates.
+
+Reproduce: `node blog/src/build.mjs 4` builds the blog from live GitHub, `npx tsx
+blog/measure/run.mjs` runs the measurement. Numbers in `blog/measure/result.json`.
 
 ## [0.1.9] - 2026-10-16
 

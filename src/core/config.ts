@@ -45,7 +45,7 @@ export const defaultWorkspaceConfig: WorkspaceConfig = {
   maxSearchResults: 12,
   snippetLines: 12,
   recencyDays: 14,
-  usageLog: true,
+  usageLog: true,
   tools: {
     projectOverview: true,
     findContext: true,
