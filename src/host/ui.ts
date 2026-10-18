@@ -6,6 +6,7 @@ export function readWorkspaceConfig(folder?: vscode.WorkspaceFolder): WorkspaceC
   const cfg = vscode.workspace.getConfiguration('bce', folder?.uri);
   return {
     enabled: cfg.get<boolean>('enabled', defaultWorkspaceConfig.enabled),
+    enforceContextFirst: cfg.get<boolean>('enforceContextFirst', defaultWorkspaceConfig.enforceContextFirst),
     autoIndex: cfg.get<boolean>('autoIndex', defaultWorkspaceConfig.autoIndex),
     tokenBudget: cfg.get<number>('tokenBudget', defaultWorkspaceConfig.tokenBudget),
     maxFileSizeKb: cfg.get<number>('maxFileSizeKb', defaultWorkspaceConfig.maxFileSizeKb),

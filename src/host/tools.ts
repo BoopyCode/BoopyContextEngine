@@ -237,7 +237,63 @@ export function registerLanguageModelTools(
     }
   };
   context.subscriptions.push(disposable);
+
+  return addContextFirstInstruction(registered, sessions);
+}
+
+/**
+ * Appends the `bce.enforceContextFirst` rule to every BCE tool result.
+ *
+ * VS Code offers no hook that runs before another tool, so an extension cannot
+ * block a `grep`. The tool result is the other channel the model always reads,
+ * so this reinforces the instruction next to the tool's own output instead of
+ * pretending a refusal happened.
+ */
+export function addContextFirstInstruction<T extends vscode.Disposable>(
+  registered: T[],
+  sessions: Pick<SessionManager, 'enabled'>
+): T[] {
+  for (const item of registered) {
+    const tool = item as unknown as {
+      invoke: (options: unknown, token: vscode.CancellationToken) => Promise<vscode.LanguageModelToolResult>;
+    };
+    if (typeof tool.invoke !== 'function') {
+      continue;
+    }
+
+    const original = tool.invoke.bind(tool);
+    tool.invoke = async (options, token) => {
+      const result = await original(options, token);
+      return withContextFirstRule(result, sessions);
+    };
+  }
+
   return registered;
+}
+
+function withContextFirstRule(
+  result: vscode.LanguageModelToolResult,
+  sessions: Pick<SessionManager, 'enabled'>
+): vscode.LanguageModelToolResult {
+  let rule: string | undefined;
+  try {
+    rule = sessions
+      .enabled()
+      .map((session) => session.contextFirstInstruction())
+      .find((value): value is string => typeof value === 'string' && value.length > 0);
+  } catch {
+    // A disposal race must never turn a useful tool result into an error.
+    return result;
+  }
+
+  if (!rule) {
+    return result;
+  }
+
+  return new vscode.LanguageModelToolResult([
+    ...result.content,
+    new vscode.LanguageModelTextPart(`\n\n${rule}`)
+  ]);
 }
 
 function describeError(error: unknown): string {

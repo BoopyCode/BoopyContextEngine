@@ -340,6 +340,11 @@
     "configuration": {
       "title": "Boopy Context Engine",
       "properties": {
+        "bce.enforceContextFirst": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add a hard rule to the chat instructions: call bceFindContext with symbolsOnly before the first grep, glob or whole-file view in an area not yet read. VS Code cannot block another tool, so this strengthens the prompt rather than enforcing it."
+        },
         "bce.enabled": {
           "type": "boolean",
           "default": true,

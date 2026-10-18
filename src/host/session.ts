@@ -18,6 +18,23 @@ import { sha1 } from '../core/util/hash';
 import { normalizeRel, toPosix } from '../core/util/paths';
 import { ensureBceGitIgnored } from './gitignore';
 
+/**
+ * Appended to the chat instructions when `bce.enforceContextFirst` is enabled.
+ *
+ * VS Code has no hook that runs before another tool, so an extension cannot
+ * block a `grep`. This is the strongest thing BCE can do: state the rule where
+ * the model reads it on every request, and be explicit that a BCE result is
+ * evidence to verify, not proof.
+ */
+export const CONTEXT_FIRST_INSTRUCTION = [
+  'Context rule for this workspace (Boopy Context Engine):',
+  'before the first grep, glob or whole-file read in an area not yet read in this session,',
+  'call bceFindContext with symbolsOnly: true, then read only the path:line ranges it names',
+  'with bceFileContext. Read a whole file only when it is under 200 lines or when BCE returned nothing.',
+  'A BCE result is not proof: an empty or truncated bundle, or coverage below 90%, must be',
+  'checked with a text search before you state that code does not exist.'
+].join(' ');
+
 export class WorkspaceSession implements vscode.Disposable {
   readonly rootKey: string;
   readonly rootName: string;
@@ -130,6 +147,18 @@ export class WorkspaceSession implements vscode.Disposable {
 
   getConfig(): WorkspaceConfig {
     return this.config;
+  }
+
+  /**
+   * Instruction text appended to the chat instructions when
+   * `bce.enforceContextFirst` is on. It is a prompt, not a gate: VS Code gives
+   * the extension no hook that could refuse a `grep` or a file read.
+   */
+  contextFirstInstruction(): string | undefined {
+    if (!this.config.enabled || !this.config.enforceContextFirst) {
+      return undefined;
+    }
+    return CONTEXT_FIRST_INSTRUCTION;
   }
 
   getGitIgnoreOutcome(): string {

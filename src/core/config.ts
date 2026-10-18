@@ -3,6 +3,12 @@ import { sha1 } from './util/hash';
 /** Workspace scoped configuration, resolved from the `bce.*` settings. */
 export interface WorkspaceConfig {
   enabled: boolean;
+  /**
+   * Adds a hard rule to the chat instructions. VS Code gives an extension no
+   * hook before another tool runs, so this cannot block a grep - it strengthens
+   * the prompt and says so, instead of pretending to be a gate.
+   */
+  enforceContextFirst: boolean;
   autoIndex: boolean;
   tokenBudget: number;
   maxFileSizeKb: number;
@@ -31,6 +37,7 @@ export interface WorkspaceConfig {
 
 export const defaultWorkspaceConfig: WorkspaceConfig = {
   enabled: true,
+  enforceContextFirst: false,
   autoIndex: true,
   tokenBudget: 4000,
   maxFileSizeKb: 512,

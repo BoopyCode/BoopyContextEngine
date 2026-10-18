@@ -1,4 +1,19 @@
 # Changelog
+
+## [Unreleased]
+
+### What changed
+
+* **New setting `bce.enforceContextFirst`** (default `false`). When enabled, a hard rule is
+  appended to every BCE tool result: call `bceFindContext` with `symbolsOnly: true` before the
+  first `grep`, `glob` or whole-file read in an area not yet read in the session, and verify an
+  empty or truncated bundle with a text search before concluding that code does not exist.
+  VS Code gives an extension no hook that runs before another tool, so this is a prompt
+  reinforcement next to real tool output - it cannot block a `grep` and does not claim to.
+* Four tests cover the injection: rule added and original content kept, result untouched when the
+  setting is off, no session without a rule, and a throwing session still returns the original
+  result. Suite is now 202 tests.
+
 ## [0.2.0] - 2026-10-17
 
 **Boopy Context Engine only.** This release contains no third-party compression layer and

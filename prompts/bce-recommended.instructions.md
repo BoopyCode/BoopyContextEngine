@@ -10,6 +10,22 @@ This workspace has the Boopy Context Engine extension installed. Its tools read 
 local index and return ranked, token-bounded slices, so they are cheaper than
 reading files "just in case" and they say what they could not see.
 
+## Hard rule (added by bce.enforceContextFirst)
+
+When `bce.enforceContextFirst` is on, the same rule is appended to every BCE tool
+result. It is a prompt, not a gate: VS Code gives an extension no hook before
+another tool runs, so BCE cannot refuse a `grep`.
+
+Before the first `grep`, `glob` or whole-file read in an area you have not already
+read in this session:
+
+1. Call `bceFindContext` with `symbolsOnly: true`.
+2. Read only the `path:line` ranges it names, using `bceFileContext`.
+3. Read a whole file only when it is under 200 lines, or when BCE returned nothing.
+
+A BCE result is not proof. An empty or truncated bundle, or `coverage:` below
+90 %, must be checked with a text search before you state that code does not exist.
+
 Order of operations:
 
 1. Touching an unfamiliar area → `bceProjectOverview` (add `focus` for the area).

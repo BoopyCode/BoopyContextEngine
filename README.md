@@ -135,6 +135,7 @@ recommended prompt pattern is to ask for the tool explicitly on non-trivial task
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `bce.enabled` | `true` | Master switch |
+| `bce.enforceContextFirst` | `false` | Append a hard rule (call `bceFindContext` with `symbolsOnly` before the first `grep`/whole-file read) to every BCE tool result. VS Code has no pre-tool hook, so this strengthens the prompt; it does not block anything |
 | `bce.autoIndex` | `true` | Background indexing + file watching |
 | `bce.tokenBudget` | `4000` | Default estimated token budget **per tool response** (not per chat) |
 | `bce.maxFileSizeKb` | `512` | Larger files are never indexed or returned |
